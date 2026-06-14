@@ -1,7 +1,13 @@
 import { writable } from 'svelte/store'
-import type { ResourceType } from '../world/worldConfig'
+import type { ResourceType, SizeCategory } from '../world/worldConfig'
 
-export type ShipState = 'idle' | 'moving'
+export type ShipState =
+  | 'idle'
+  | 'moving'
+  | 'traveling-to-target'
+  | 'mining'
+  | 'traveling-to-base'
+  | 'unloading'
 
 export interface SelectedShipData {
   id: string
@@ -9,6 +15,16 @@ export interface SelectedShipData {
   state: ShipState
   cargoCapacity: number
   cargoContents: Partial<Record<ResourceType, number>>
+  autoCycle: boolean
+}
+
+export interface SelectedAsteroidData {
+  id: string
+  resourceType: ResourceType
+  currentQuantity: number
+  maxQuantity: number
+  sizeCategory: SizeCategory
 }
 
 export const selectedShip = writable<SelectedShipData | null>(null)
+export const selectedAsteroid = writable<SelectedAsteroidData | null>(null)

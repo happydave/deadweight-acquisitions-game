@@ -1,3 +1,4 @@
+import { nanoid } from 'nanoid'
 import { createRng, rngInt, rngFloat, rngWeighted } from './rng'
 import {
   FIELD_COUNT,
@@ -12,6 +13,7 @@ import {
 } from './worldConfig'
 
 export interface AsteroidData {
+  id: string
   x: number
   y: number
   resourceType: ResourceType
@@ -53,7 +55,7 @@ export function generateWorld(seed: number): AsteroidData[] {
         const sizeConfig = SIZE_CONFIGS[sizeCategory]
         const maxQuantity = rngInt(rng, sizeConfig.quantityMin, sizeConfig.quantityMax)
 
-        asteroids.push({ x, y, resourceType, sizeCategory, currentQuantity: maxQuantity, maxQuantity })
+        asteroids.push({ id: nanoid(), x, y, resourceType, sizeCategory, currentQuantity: maxQuantity, maxQuantity })
       }
     }
   }

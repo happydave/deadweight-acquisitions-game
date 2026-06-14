@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { get } from 'svelte/store'
 import { generateWorld } from '../world/worldGenerator'
 import {
   ASTEROID_TEXTURE_SIZE,
@@ -8,11 +9,15 @@ import {
 import { Asteroid } from '../entities/Asteroid'
 import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
 import { gameState } from '../state/gameState'
+import { commandQueue } from '../state/commandStore'
+import { selectedAsteroid, selectedShip } from '../state/shipStore'
 
 const WORLD_SIZE = 6000
 const MAX_ZOOM = 2
 const PAN_SPEED = 500 // world units per second
 const STAR_TEXTURE_SIZE = 512
+const BASE_X = 0
+const BASE_Y = 0
 
 const STAR_LAYERS = [
   { key: 'stars-far',  count: 22, parallax: 0.07, brightMin: 120, largeChance: 0.00 },
@@ -86,7 +91,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private spawnStarterShip(): void {
-    const ship = new Ship(this, 0, 0, 'Hauler-01')
+    const ship = new Ship(this, 0, 0, 'Hauler-01', { x: BASE_X, y: BASE_Y })
     this.ships.push(ship)
     ship.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown()) return
@@ -113,6 +118,7 @@ export class SpaceScene extends Phaser.Scene {
       this.selectionRing.destroy()
       this.selectionRing = null
     }
+    selectedAsteroid.set(null)
   }
 
   private drawSelectionRing(): void {
@@ -152,11 +158,11 @@ export class SpaceScene extends Phaser.Scene {
   private createBase(): void {
     const gfx = this.add.graphics()
     gfx.fillStyle(0x44aaff, 1)
-    gfx.fillCircle(0, 0, 20)
+    gfx.fillCircle(BASE_X, BASE_Y, 20)
     gfx.lineStyle(2, 0x88ccff, 1)
-    gfx.strokeCircle(0, 0, 32)
+    gfx.strokeCircle(BASE_X, BASE_Y, 32)
     this.add
-      .text(0, 40, 'BASE', { color: '#88ccff', fontSize: '12px', fontFamily: 'monospace' })
+      .text(BASE_X, BASE_Y + 40, 'BASE', { color: '#88ccff', fontSize: '12px', fontFamily: 'monospace' })
       .setOrigin(0.5, 0)
   }
 
@@ -171,6 +177,18 @@ export class SpaceScene extends Phaser.Scene {
 
   private computeMinZoom(): number {
     return Math.max(this.scale.width / WORLD_SIZE, this.scale.height / WORLD_SIZE)
+  }
+
+  private drainCommandQueue(): void {
+    const commands = get(commandQueue)
+    if (commands.length === 0) return
+    commandQueue.set([])
+    for (const cmd of commands) {
+      if (cmd.type === 'toggleAutoCycle') {
+        const ship = this.ships.find(s => s.id === cmd.shipId)
+        if (ship) ship.setAutoCycle(!ship.autoCycle)
+      }
+    }
   }
 
   private setupInput(): void {
@@ -208,7 +226,17 @@ export class SpaceScene extends Phaser.Scene {
         if (pointer.leftButtonDown()) {
           const hitShip = targets.some(t => t instanceof Ship)
           if (!hitShip) {
-            this.clearSelection()
+            const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
+            if (hitAsteroid) {
+              if (this.selectedShip) {
+                this.selectedShip.issueMineOrder(hitAsteroid)
+              } else {
+                selectedShip.set(null)
+                hitAsteroid.selectSelf()
+              }
+            } else {
+              this.clearSelection()
+            }
           }
         }
       },
@@ -266,6 +294,8 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    this.drainCommandQueue()
+
     const dt = delta / 1000
     const cam = this.cameras.main
     const speed = PAN_SPEED * dt
