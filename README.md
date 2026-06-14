@@ -21,5 +21,6 @@ make dev       # start dev server at http://localhost:5173
 ```bash
 make build     # production build → dist/
 make compile   # TypeScript type-check (no emit)
+make test      # run unit tests (Vitest)
 make clean     # remove node_modules/ and dist/
 ```

@@ -9,6 +9,7 @@ export interface AsteroidSnapshot {
   sizeCategory: SizeCategory
   currentQuantity: number
   maxQuantity: number
+  isCompany: boolean
 }
 
 export interface ShipSnapshot {

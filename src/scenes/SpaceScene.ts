@@ -8,6 +8,7 @@ import {
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
 import { Base, generateBaseTexture } from '../entities/Base'
+import { Planet, generatePlanetTexture } from '../entities/Planet'
 import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
 import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
@@ -16,12 +17,12 @@ import { basePanelOpen } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
 import { GameSaveService } from '../services/GameSaveService'
 
-const WORLD_SIZE = 6000
+const WORLD_SIZE = 8500
 const MAX_ZOOM = 2
 const PAN_SPEED = 500 // world units per second
 const STAR_TEXTURE_SIZE = 512
 const BASE_X = 0
-const BASE_Y = 0
+const BASE_Y = 650   // GEO orbit south of planet (planet center at 0,0)
 const AUTO_SAVE_INTERVAL = 60 // real-world seconds
 
 const STAR_LAYERS = [
@@ -69,6 +70,8 @@ export class SpaceScene extends Phaser.Scene {
     this.generateAsteroidTextures()
     generateShipTexture(this)
     generateBaseTexture(this)
+    generatePlanetTexture(this)
+    this.spawnPlanet()
 
     const save = GameSaveService.load()
     if (save !== null) {
@@ -156,7 +159,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -171,6 +174,7 @@ export class SpaceScene extends Phaser.Scene {
         sizeCategory: a.sizeCategory,
         currentQuantity: a.currentQuantity,
         maxQuantity: a.maxQuantity,
+        isCompany: a.isCompany,
       })),
       ships: this.ships.map(s => ({
         id: s.id,
@@ -206,6 +210,10 @@ export class SpaceScene extends Phaser.Scene {
       gfx.generateTexture(key, s, s)
       gfx.destroy()
     }
+  }
+
+  private spawnPlanet(): void {
+    new Planet(this)
   }
 
   private spawnWorld(): void {

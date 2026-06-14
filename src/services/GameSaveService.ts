@@ -3,8 +3,20 @@ import type { SaveState } from '../state/gameState'
 const SAVE_KEY = 'dwa-save'
 
 function migrate(raw: SaveState): SaveState | null {
+  // Each case falls through so saves upgrade through all intermediate versions.
   switch (raw.schemaVersion) {
     case 1:
+      // v1 → v2: add isCompany: false to every asteroid
+      raw = {
+        ...raw,
+        schemaVersion: 2,
+        asteroids: raw.asteroids.map(a => ({
+          ...a,
+          isCompany: (a as { isCompany?: boolean }).isCompany ?? false,
+        })),
+      }
+      // falls through
+    case 2:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

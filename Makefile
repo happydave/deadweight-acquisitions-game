@@ -1,7 +1,7 @@
 IMAGE = dwa-dev
 DOCKER = docker run --rm -v "$$(pwd)":/workspace -w /workspace $(IMAGE)
 
-.PHONY: image install dev build compile clean
+.PHONY: image install dev build compile test clean
 
 image:
 	docker build -t $(IMAGE) -f Dockerfile.dev .
@@ -17,6 +17,9 @@ build: image
 
 compile: image
 	$(DOCKER) npm run compile
+
+test: image
+	$(DOCKER) npm test
 
 clean:
 	rm -rf node_modules dist
