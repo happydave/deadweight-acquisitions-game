@@ -42,6 +42,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   miningTarget: Asteroid | null
   autoCycle: boolean
   unloadTimer: number
+  isSelected: boolean
 
   constructor(
     scene: Phaser.Scene,
@@ -65,6 +66,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.miningTarget = null
     this.autoCycle = false
     this.unloadTimer = 0
+    this.isSelected = false
 
     scene.add.existing(this)
     scene.physics.add.existing(this)
@@ -221,7 +223,18 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     return Object.values(this.cargoContents).reduce((sum, n) => sum + (n ?? 0), 0)
   }
 
+  select(): void {
+    this.isSelected = true
+    this.pushToStore()
+  }
+
+  deselect(): void {
+    this.isSelected = false
+    selectedShip.set(null)
+  }
+
   pushToStore(): void {
+    if (!this.isSelected) return
     selectedShip.set({
       id: this.id,
       name: this.shipName,
@@ -230,9 +243,5 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       cargoContents: { ...this.cargoContents },
       autoCycle: this.autoCycle,
     })
-  }
-
-  deselect(): void {
-    selectedShip.set(null)
   }
 }

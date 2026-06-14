@@ -13,6 +13,7 @@ import { gameState } from '../state/gameState'
 import { commandQueue } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
 import { basePanelOpen } from '../state/baseStore'
+import { fleetSummary } from '../state/fleetStore'
 
 const WORLD_SIZE = 6000
 const MAX_ZOOM = 2
@@ -122,7 +123,7 @@ export class SpaceScene extends Phaser.Scene {
     this.selectionRing = this.add.graphics()
     this.selectionRing.setDepth(ship.depth - 1)
     this.drawSelectionRing()
-    ship.pushToStore()
+    ship.select()
   }
 
   private clearSelection(): void {
@@ -330,6 +331,15 @@ export class SpaceScene extends Phaser.Scene {
     for (const ship of this.ships) {
       ship.updateSteering(dt)
     }
+
+    let idle = 0, mining = 0, returning = 0
+    for (const ship of this.ships) {
+      const s = ship.shipState
+      if (s === 'idle' || s === 'moving') idle++
+      else if (s === 'traveling-to-target' || s === 'mining') mining++
+      else returning++
+    }
+    fleetSummary.set({ idle, mining, returning })
 
     if (this.selectedShip && this.selectionRing) {
       this.drawSelectionRing()
