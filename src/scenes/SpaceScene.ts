@@ -12,7 +12,16 @@ import {
 import { Asteroid } from '../entities/Asteroid'
 import { Base, generateBaseTexture } from '../entities/Base'
 import { Planet, generatePlanetTexture } from '../entities/Planet'
-import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
+import {
+  Ship,
+  generateShipTexture,
+  DRAG_ORDER_THRESHOLD,
+  CARGO_CAPACITY_TIERS,
+  MINING_RATE_TIERS,
+  CARGO_UPGRADE_COSTS,
+  MINING_UPGRADE_COSTS,
+  MAX_UPGRADE_LEVEL,
+} from '../entities/Ship'
 import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
@@ -140,6 +149,10 @@ export class SpaceScene extends Phaser.Scene {
       ship.cargoContents = { ...snap.cargoContents }
       ship.autoCycle = snap.autoCycle
       ship.unloadTimer = snap.unloadTimer
+      ship.cargoUpgradeLevel = snap.cargoUpgradeLevel
+      ship.miningUpgradeLevel = snap.miningUpgradeLevel
+      ship.cargoCapacity = CARGO_CAPACITY_TIERS[snap.cargoUpgradeLevel]
+      ship.miningRate = MINING_RATE_TIERS[snap.miningUpgradeLevel]
       ship.setAngle(snap.heading)
 
       this.ships.push(ship)
@@ -164,7 +177,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -193,6 +206,8 @@ export class SpaceScene extends Phaser.Scene {
         cargoContents: { ...s.cargoContents },
         cargoCapacity: s.cargoCapacity,
         miningRate: s.miningRate,
+        cargoUpgradeLevel: s.cargoUpgradeLevel,
+        miningUpgradeLevel: s.miningUpgradeLevel,
         autoCycle: s.autoCycle,
         unloadTimer: s.unloadTimer,
       })),
@@ -376,6 +391,8 @@ export class SpaceScene extends Phaser.Scene {
       this.commissionNewShip()
     } else if (cmd.type === 'manualSave') {
       GameSaveService.save(this.buildSaveState())
+    } else if (cmd.type === 'upgradeShip') {
+      this.applyShipUpgrade(cmd.shipId, cmd.stat)
     }
   }
 
@@ -391,6 +408,30 @@ export class SpaceScene extends Phaser.Scene {
     this.ships.push(ship)
     this.base.registerShip(ship.id)
     this.attachShipInput(ship)
+  }
+
+  private applyShipUpgrade(shipId: string, stat: 'cargo' | 'mining'): void {
+    const ship = this.ships.find(s => s.id === shipId)
+    if (!ship) return
+
+    if (stat === 'cargo') {
+      if (ship.cargoUpgradeLevel >= MAX_UPGRADE_LEVEL) return
+      const cost = CARGO_UPGRADE_COSTS[ship.cargoUpgradeLevel]
+      if (this.base.credits < cost) return
+      this.base.credits -= cost
+      ship.cargoUpgradeLevel++
+      ship.cargoCapacity = CARGO_CAPACITY_TIERS[ship.cargoUpgradeLevel]
+    } else {
+      if (ship.miningUpgradeLevel >= MAX_UPGRADE_LEVEL) return
+      const cost = MINING_UPGRADE_COSTS[ship.miningUpgradeLevel]
+      if (this.base.credits < cost) return
+      this.base.credits -= cost
+      ship.miningUpgradeLevel++
+      ship.miningRate = MINING_RATE_TIERS[ship.miningUpgradeLevel]
+    }
+
+    ship.pushToStore()
+    this.base.pushToStore()
   }
 
   private setupInput(): void {

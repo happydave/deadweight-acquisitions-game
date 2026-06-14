@@ -1,8 +1,16 @@
 <script lang="ts">
   import { baseState, basePanelOpen } from '../state/baseStore'
   import { commandQueue } from '../state/commandStore'
+  import { selectedShip } from '../state/shipStore'
   import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
   import { SHIP_COMMISSION_COST } from '../entities/Base'
+  import {
+    MAX_UPGRADE_LEVEL,
+    CARGO_CAPACITY_TIERS,
+    MINING_RATE_TIERS,
+    CARGO_UPGRADE_COSTS,
+    MINING_UPGRADE_COSTS,
+  } from '../entities/Ship'
 
   const RESOURCE_LABELS: Record<string, string> = {
     iron: 'Iron',
@@ -27,6 +35,11 @@
 
   function commissionShip(): void {
     commandQueue.update(q => [...q, { type: 'commissionShip' }])
+  }
+
+  function upgradeShip(stat: 'cargo' | 'mining'): void {
+    if (!$selectedShip) return
+    commandQueue.update(q => [...q, { type: 'upgradeShip', shipId: $selectedShip!.id, stat }])
   }
 </script>
 
@@ -74,6 +87,47 @@
         on:click={commissionShip}
       >Commission</button>
     </div>
+
+    <!-- Upgrades (visible only when a ship is selected) -->
+    {#if $selectedShip}
+      {@const cargoLvl = $selectedShip.cargoUpgradeLevel}
+      {@const miningLvl = $selectedShip.miningUpgradeLevel}
+      <div class="section-title">UPGRADES — {$selectedShip.name}</div>
+      <div class="row upgrade-row" class:disabled={cargoLvl >= MAX_UPGRADE_LEVEL || $baseState.credits < CARGO_UPGRADE_COSTS[cargoLvl]}>
+        <span class="label">Cargo</span>
+        <span class="upgrade-info">
+          {CARGO_CAPACITY_TIERS[cargoLvl]}
+          {#if cargoLvl < MAX_UPGRADE_LEVEL}→ {CARGO_CAPACITY_TIERS[cargoLvl + 1]}{/if}
+        </span>
+        {#if cargoLvl < MAX_UPGRADE_LEVEL}
+          <span class="price">{CARGO_UPGRADE_COSTS[cargoLvl]}cr</span>
+          <button
+            class="upgrade-btn"
+            disabled={$baseState.credits < CARGO_UPGRADE_COSTS[cargoLvl]}
+            on:click={() => upgradeShip('cargo')}
+          >Upgrade</button>
+        {:else}
+          <span class="max-label">MAX</span>
+        {/if}
+      </div>
+      <div class="row upgrade-row" class:disabled={miningLvl >= MAX_UPGRADE_LEVEL || $baseState.credits < MINING_UPGRADE_COSTS[miningLvl]}>
+        <span class="label">Mining</span>
+        <span class="upgrade-info">
+          {MINING_RATE_TIERS[miningLvl]}/s
+          {#if miningLvl < MAX_UPGRADE_LEVEL}→ {MINING_RATE_TIERS[miningLvl + 1]}/s{/if}
+        </span>
+        {#if miningLvl < MAX_UPGRADE_LEVEL}
+          <span class="price">{MINING_UPGRADE_COSTS[miningLvl]}cr</span>
+          <button
+            class="upgrade-btn"
+            disabled={$baseState.credits < MINING_UPGRADE_COSTS[miningLvl]}
+            on:click={() => upgradeShip('mining')}
+          >Upgrade</button>
+        {:else}
+          <span class="max-label">MAX</span>
+        {/if}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -200,4 +254,41 @@
   .resource-ice          { color: #99ddff; }
   .resource-silicates    { color: #c8b870; }
   .resource-rare-metals  { color: #cc99ff; }
+
+  .upgrade-row {
+    justify-content: space-between;
+  }
+
+  .upgrade-info {
+    color: #cce0f0;
+    font-size: 10px;
+    flex: 1;
+  }
+
+  .upgrade-btn {
+    background: rgba(40, 80, 120, 0.6);
+    border: 1px solid #2a5a8a;
+    border-radius: 3px;
+    color: #aaccee;
+    font-family: monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+
+  .upgrade-btn:hover:not(:disabled) {
+    background: rgba(60, 100, 150, 0.7);
+  }
+
+  .upgrade-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .max-label {
+    color: #44aaff;
+    font-size: 10px;
+    padding: 2px 6px;
+  }
 </style>

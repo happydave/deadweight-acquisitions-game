@@ -11,8 +11,13 @@ export const SHIP_TURN_RATE = 180      // degrees per second
 export const ARRIVAL_RADIUS = 20       // world units — used for base arrival
 export const MINING_PROXIMITY = 60     // world units — arrival threshold for asteroid
 export const DRAG_ORDER_THRESHOLD = 5  // screen pixels
-export const SHIP_MINING_RATE = 10     // units per second
 export const UNLOAD_DURATION = 3       // seconds
+
+export const MAX_UPGRADE_LEVEL = 3
+export const CARGO_CAPACITY_TIERS = [200, 350, 550, 800] as const
+export const MINING_RATE_TIERS    = [10,  15,  22,  32]  as const
+export const CARGO_UPGRADE_COSTS  = [300, 600, 1000]     as const
+export const MINING_UPGRADE_COSTS = [400, 800, 1500]     as const
 
 export function generateShipTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(SHIP_TEXTURE_KEY)) return
@@ -31,8 +36,10 @@ export function generateShipTexture(scene: Phaser.Scene): void {
 export class Ship extends Phaser.Physics.Arcade.Sprite {
   readonly id: string
   readonly shipName: string
-  readonly cargoCapacity: number
-  readonly miningRate: number
+  cargoCapacity: number
+  miningRate: number
+  cargoUpgradeLevel: number
+  miningUpgradeLevel: number
   readonly basePosition: { x: number; y: number }
   readonly base: Base
   cargoContents: Partial<Record<ResourceType, number>>
@@ -56,8 +63,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, SHIP_TEXTURE_KEY)
     this.id = id ?? nanoid()
     this.shipName = name
-    this.cargoCapacity = 200
-    this.miningRate = SHIP_MINING_RATE
+    this.cargoCapacity = CARGO_CAPACITY_TIERS[0]
+    this.miningRate = MINING_RATE_TIERS[0]
+    this.cargoUpgradeLevel = 0
+    this.miningUpgradeLevel = 0
     this.basePosition = basePosition
     this.base = base
     this.cargoContents = {}
@@ -241,6 +250,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       name: this.shipName,
       state: this.shipState,
       cargoCapacity: this.cargoCapacity,
+      miningRate: this.miningRate,
+      cargoUpgradeLevel: this.cargoUpgradeLevel,
+      miningUpgradeLevel: this.miningUpgradeLevel,
       cargoContents: { ...this.cargoContents },
       autoCycle: this.autoCycle,
     })

@@ -6,5 +6,6 @@ export type GameCommand =
   | { type: 'sellResource'; resourceType: ResourceType }
   | { type: 'commissionShip' }
   | { type: 'manualSave' }
+  | { type: 'upgradeShip'; shipId: string; stat: 'cargo' | 'mining' }
 
 export const commandQueue = writable<GameCommand[]>([])

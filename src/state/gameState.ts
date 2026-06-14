@@ -24,6 +24,8 @@ export interface ShipSnapshot {
   cargoContents: Partial<Record<ResourceType, number>>
   cargoCapacity: number
   miningRate: number
+  cargoUpgradeLevel: number
+  miningUpgradeLevel: number
   autoCycle: boolean
   unloadTimer: number
 }

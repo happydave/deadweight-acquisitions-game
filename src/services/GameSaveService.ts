@@ -17,6 +17,18 @@ function migrate(raw: SaveState): SaveState | null {
       }
       // falls through
     case 2:
+      // v2 → v3: add cargoUpgradeLevel and miningUpgradeLevel to every ship
+      raw = {
+        ...raw,
+        schemaVersion: 3,
+        ships: raw.ships.map(s => ({
+          ...s,
+          cargoUpgradeLevel: (s as { cargoUpgradeLevel?: number }).cargoUpgradeLevel ?? 0,
+          miningUpgradeLevel: (s as { miningUpgradeLevel?: number }).miningUpgradeLevel ?? 0,
+        })),
+      }
+      // falls through
+    case 3:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

@@ -14,6 +14,9 @@ export interface SelectedShipData {
   name: string
   state: ShipState
   cargoCapacity: number
+  miningRate: number
+  cargoUpgradeLevel: number
+  miningUpgradeLevel: number
   cargoContents: Partial<Record<ResourceType, number>>
   autoCycle: boolean
 }
