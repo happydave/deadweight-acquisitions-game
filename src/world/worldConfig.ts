@@ -18,6 +18,9 @@ export const COMPANY_COUNT_MIN = 4
 export const COMPANY_COUNT_MAX = 8
 export const COMPANY_DISTANCE_MIN = 800
 export const COMPANY_DISTANCE_MAX = 2800
+export const COMPANY_ARRIVAL_BASE_INTERVAL = 300  // seconds at full natural resources
+export const COMPANY_ARRIVAL_MIN_INTERVAL = 60    // floor when natural resources exhausted
+export const COMPANY_ASTEROID_MAX_COUNT = 12
 
 // --- Resource weights ---
 export const MOON_RESOURCE_WEIGHTS: Record<ResourceType, number> = {

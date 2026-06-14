@@ -1,9 +1,12 @@
 import Phaser from 'phaser'
 import { get } from 'svelte/store'
-import { generateWorld } from '../world/worldGenerator'
+import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
 import {
   ASTEROID_TEXTURE_SIZE,
   RESOURCE_COLORS,
+  COMPANY_ARRIVAL_BASE_INTERVAL,
+  COMPANY_ARRIVAL_MIN_INTERVAL,
+  COMPANY_ASTEROID_MAX_COUNT,
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
@@ -57,6 +60,7 @@ export class SpaceScene extends Phaser.Scene {
   private minZoom = 0.1
   private gameClock = 0
   private autoSaveAccumulator = 0
+  private companyArrivalAccumulator = 0
   private followCam = false
   private beforeUnloadHandler!: () => void
 
@@ -298,6 +302,25 @@ export class SpaceScene extends Phaser.Scene {
     this.cameras.main.stopFollow()
   }
 
+  private companyArrivalInterval(): number {
+    const natural = this.asteroids.filter(a => !a.isCompany)
+    if (natural.length === 0) return COMPANY_ARRIVAL_MIN_INTERVAL
+    const totalMax = natural.reduce((sum, a) => sum + a.maxQuantity, 0)
+    const totalCurrent = natural.reduce((sum, a) => sum + a.currentQuantity, 0)
+    const fraction = totalMax > 0 ? totalCurrent / totalMax : 0
+    return COMPANY_ARRIVAL_MIN_INTERVAL +
+      (COMPANY_ARRIVAL_BASE_INTERVAL - COMPANY_ARRIVAL_MIN_INTERVAL) * fraction
+  }
+
+  private trySpawnCompanyAsteroid(): void {
+    const liveCount = this.asteroids.filter(a => a.isCompany).length
+    if (liveCount >= COMPANY_ASTEROID_MAX_COUNT) return
+    const seed = Math.floor(Math.random() * 0x100000000)
+    const data = generateCompanyAsteroid(seed)
+    const asteroid = new Asteroid(this, data)
+    this.asteroids.push(asteroid)
+  }
+
   private buildStarLayers(): void {
     const { width, height } = this.scale
 
@@ -495,6 +518,12 @@ export class SpaceScene extends Phaser.Scene {
     if (this.autoSaveAccumulator >= AUTO_SAVE_INTERVAL) {
       this.autoSaveAccumulator = 0
       GameSaveService.save(this.buildSaveState())
+    }
+
+    this.companyArrivalAccumulator += dt
+    if (this.companyArrivalAccumulator >= this.companyArrivalInterval()) {
+      this.companyArrivalAccumulator = 0
+      this.trySpawnCompanyAsteroid()
     }
 
     const cam = this.cameras.main

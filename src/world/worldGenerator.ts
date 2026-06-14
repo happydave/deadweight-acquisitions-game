@@ -88,3 +88,27 @@ export function generateWorld(seed: number): AsteroidData[] {
 
   return asteroids
 }
+
+export function generateCompanyAsteroid(seed: number): AsteroidData {
+  const rng = createRng(seed)
+  const angle = rngFloat(rng, 0, Math.PI * 2)
+  const distance = rngFloat(rng, COMPANY_DISTANCE_MIN, COMPANY_DISTANCE_MAX)
+  const x = Math.cos(angle) * distance
+  const y = Math.sin(angle) * distance
+
+  const resourceType = rngWeighted(rng, COMPANY_RESOURCE_WEIGHTS)
+  const sizeCategory = rngWeighted(rng, SIZE_WEIGHTS)
+  const sizeConfig = SIZE_CONFIGS[sizeCategory]
+  const maxQuantity = rngInt(rng, sizeConfig.quantityMin, sizeConfig.quantityMax)
+
+  return {
+    id: nanoid(),
+    x,
+    y,
+    resourceType,
+    sizeCategory,
+    currentQuantity: maxQuantity,
+    maxQuantity,
+    isCompany: true,
+  }
+}
