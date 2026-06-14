@@ -6,6 +6,7 @@ import {
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
+import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
 import { gameState } from '../state/gameState'
 
 const WORLD_SIZE = 6000
@@ -19,9 +20,16 @@ const STAR_LAYERS = [
   { key: 'stars-near', count:  8, parallax: 0.14, brightMin: 200, largeChance: 0.40 },
 ] as const
 
+const SELECTION_RING_COLOR = 0x44ffaa
+const SELECTION_RING_RADIUS = 20
+const SELECTION_RING_ALPHA = 0.8
+
 export class SpaceScene extends Phaser.Scene {
   private starLayers: Phaser.GameObjects.TileSprite[] = []
   private asteroids: Asteroid[] = []
+  private ships: Ship[] = []
+  private selectedShip: Ship | null = null
+  private selectionRing: Phaser.GameObjects.Graphics | null = null
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private wasd!: {
     up: Phaser.Input.Keyboard.Key
@@ -32,6 +40,8 @@ export class SpaceScene extends Phaser.Scene {
   private isDragging = false
   private dragLastX = 0
   private dragLastY = 0
+  private rightDownX = 0
+  private rightDownY = 0
   private minZoom = 0.1
 
   constructor() {
@@ -41,8 +51,10 @@ export class SpaceScene extends Phaser.Scene {
   create(): void {
     this.buildStarLayers()
     this.generateAsteroidTextures()
+    generateShipTexture(this)
     this.createBase()
     this.spawnWorld()
+    this.spawnStarterShip()
     this.setupCamera()
     this.setupInput()
     this.scale.on('resize', (size: Phaser.Structs.Size) => this.onResize(size))
@@ -71,6 +83,47 @@ export class SpaceScene extends Phaser.Scene {
     gameState.worldSeed = seed
     const asteroidData = generateWorld(seed)
     this.asteroids = asteroidData.map(data => new Asteroid(this, data))
+  }
+
+  private spawnStarterShip(): void {
+    const ship = new Ship(this, 0, 0, 'Hauler-01')
+    this.ships.push(ship)
+    ship.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) return
+      this.selectShip(ship)
+    })
+  }
+
+  private selectShip(ship: Ship): void {
+    if (this.selectedShip === ship) return
+    this.clearSelection()
+    this.selectedShip = ship
+    this.selectionRing = this.add.graphics()
+    this.selectionRing.setDepth(ship.depth - 1)
+    this.drawSelectionRing()
+    ship.pushToStore()
+  }
+
+  private clearSelection(): void {
+    if (this.selectedShip) {
+      this.selectedShip.deselect()
+      this.selectedShip = null
+    }
+    if (this.selectionRing) {
+      this.selectionRing.destroy()
+      this.selectionRing = null
+    }
+  }
+
+  private drawSelectionRing(): void {
+    if (!this.selectionRing || !this.selectedShip) return
+    this.selectionRing.clear()
+    this.selectionRing.lineStyle(2, SELECTION_RING_COLOR, SELECTION_RING_ALPHA)
+    this.selectionRing.strokeCircle(
+      this.selectedShip.x,
+      this.selectedShip.y,
+      SELECTION_RING_RADIUS,
+    )
   }
 
   private buildStarLayers(): void {
@@ -135,13 +188,31 @@ export class SpaceScene extends Phaser.Scene {
       this.cameras.main.pan(0, 0, 300, 'Power2')
     })
 
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
-        this.isDragging = true
-        this.dragLastX = pointer.x
-        this.dragLastY = pointer.y
-      }
+    keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC).on('down', () => {
+      this.clearSelection()
     })
+
+    this.input.on(
+      'pointerdown',
+      (pointer: Phaser.Input.Pointer, targets: Phaser.GameObjects.GameObject[]) => {
+        if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
+          this.isDragging = true
+          this.dragLastX = pointer.x
+          this.dragLastY = pointer.y
+          if (pointer.rightButtonDown()) {
+            this.rightDownX = pointer.x
+            this.rightDownY = pointer.y
+          }
+        }
+
+        if (pointer.leftButtonDown()) {
+          const hitShip = targets.some(t => t instanceof Ship)
+          if (!hitShip) {
+            this.clearSelection()
+          }
+        }
+      },
+    )
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (!this.isDragging) return
@@ -152,11 +223,22 @@ export class SpaceScene extends Phaser.Scene {
       this.dragLastY = pointer.y
     })
 
-    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-      if (!pointer.rightButtonDown() && !pointer.middleButtonDown()) {
-        this.isDragging = false
-      }
-    })
+    this.input.on(
+      'pointerup',
+      (pointer: Phaser.Input.Pointer) => {
+        if (!pointer.rightButtonDown() && !pointer.middleButtonDown()) {
+          this.isDragging = false
+        }
+
+        if (pointer.rightButtonReleased()) {
+          const dx = pointer.x - this.rightDownX
+          const dy = pointer.y - this.rightDownY
+          if (Math.sqrt(dx * dx + dy * dy) < DRAG_ORDER_THRESHOLD && this.selectedShip) {
+            this.selectedShip.issueMoveTo(pointer.worldX, pointer.worldY)
+          }
+        }
+      },
+    )
 
     this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
 
@@ -202,6 +284,14 @@ export class SpaceScene extends Phaser.Scene {
     for (let i = 0; i < this.starLayers.length; i++) {
       this.starLayers[i].tilePositionX = cam.scrollX * STAR_LAYERS[i].parallax
       this.starLayers[i].tilePositionY = cam.scrollY * STAR_LAYERS[i].parallax
+    }
+
+    for (const ship of this.ships) {
+      ship.updateSteering(dt)
+    }
+
+    if (this.selectedShip && this.selectionRing) {
+      this.drawSelectionRing()
     }
   }
 }

@@ -3,6 +3,7 @@ import { mount } from 'svelte'
 import { BootScene } from './scenes/BootScene'
 import { SpaceScene } from './scenes/SpaceScene'
 import Hud from './ui/Hud.svelte'
+import EntityPanel from './ui/EntityPanel.svelte'
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -21,4 +22,5 @@ new Phaser.Game({
 const hudTarget = document.getElementById('hud')
 if (hudTarget) {
   mount(Hud, { target: hudTarget })
+  mount(EntityPanel, { target: hudTarget })
 }
