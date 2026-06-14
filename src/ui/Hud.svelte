@@ -1,6 +1,10 @@
 <script lang="ts">
   import { baseState } from '../state/baseStore'
   import { fleetSummary } from '../state/fleetStore'
+  import { commandQueue } from '../state/commandStore'
+
+  let saveLabel = 'Save'
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
 
   function totalStored(storage: Record<string, number>): number {
     return Object.values(storage).reduce((sum, n) => sum + n, 0)
@@ -8,6 +12,13 @@
 
   function storageEntries(storage: Record<string, number>): [string, number][] {
     return Object.entries(storage).filter(([, qty]) => qty > 0)
+  }
+
+  function manualSave(): void {
+    commandQueue.update(q => [...q, { type: 'manualSave' }])
+    saveLabel = 'Saved'
+    if (saveTimer !== null) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => { saveLabel = 'Save' }, 1000)
   }
 </script>
 
@@ -41,6 +52,9 @@
   <div class="hud-row hud-indent">
     <span class="hud-key">Returning</span>
     <span class="hud-val">{$fleetSummary.returning}</span>
+  </div>
+  <div class="hud-row hud-section">
+    <button class="save-btn" on:click={manualSave}>{saveLabel}</button>
   </div>
 </div>
 
@@ -91,4 +105,21 @@
   .resource-ice          { color: #99ddff; }
   .resource-silicates    { color: #c8b870; }
   .resource-rare-metals  { color: #cc99ff; }
+
+  .save-btn {
+    pointer-events: auto;
+    background: rgba(20, 40, 60, 0.7);
+    border: 1px solid #2a4a6a;
+    border-radius: 3px;
+    color: #6a9aaa;
+    font-family: monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 8px;
+  }
+
+  .save-btn:hover {
+    color: #aaccee;
+    border-color: #4a7aaa;
+  }
 </style>

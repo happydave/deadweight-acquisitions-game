@@ -9,11 +9,12 @@ import {
 import { Asteroid } from '../entities/Asteroid'
 import { Base, generateBaseTexture } from '../entities/Base'
 import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
-import { gameState } from '../state/gameState'
+import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
 import { basePanelOpen } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
+import { GameSaveService } from '../services/GameSaveService'
 
 const WORLD_SIZE = 6000
 const MAX_ZOOM = 2
@@ -21,6 +22,7 @@ const PAN_SPEED = 500 // world units per second
 const STAR_TEXTURE_SIZE = 512
 const BASE_X = 0
 const BASE_Y = 0
+const AUTO_SAVE_INTERVAL = 60 // real-world seconds
 
 const STAR_LAYERS = [
   { key: 'stars-far',  count: 22, parallax: 0.07, brightMin: 120, largeChance: 0.00 },
@@ -52,22 +54,140 @@ export class SpaceScene extends Phaser.Scene {
   private rightDownX = 0
   private rightDownY = 0
   private minZoom = 0.1
+  private gameClock = 0
+  private autoSaveAccumulator = 0
+  private beforeUnloadHandler!: () => void
 
   constructor() {
     super({ key: 'SpaceScene' })
   }
 
   create(): void {
+    this.gameClock = 0
+    this.autoSaveAccumulator = 0
     this.buildStarLayers()
     this.generateAsteroidTextures()
     generateShipTexture(this)
     generateBaseTexture(this)
-    this.spawnBase()
-    this.spawnWorld()
-    this.spawnStarterShip()
+
+    const save = GameSaveService.load()
+    if (save !== null) {
+      this.loadFromSave(save)
+    } else {
+      this.spawnBase()
+      this.spawnWorld()
+      this.spawnStarterShip()
+    }
+
     this.setupCamera()
     this.setupInput()
     this.scale.on('resize', (size: Phaser.Structs.Size) => this.onResize(size))
+
+    this.beforeUnloadHandler = () => {
+      GameSaveService.save(this.buildSaveState())
+    }
+    window.addEventListener('beforeunload', this.beforeUnloadHandler)
+  }
+
+  shutdown(): void {
+    window.removeEventListener('beforeunload', this.beforeUnloadHandler)
+  }
+
+  private loadFromSave(save: SaveState): void {
+    gameState.worldSeed = save.worldSeed
+    gameState.gameClock = save.gameClock
+    this.gameClock = save.gameClock
+
+    // Restore asteroids from save (bypasses generateWorld — IDs and depletion are in save)
+    this.asteroids = save.asteroids.map(data => new Asteroid(this, data))
+
+    // Restore base
+    this.base = new Base(this, BASE_X, BASE_Y)
+    this.base.storage = { ...save.base.storage }
+    this.base.credits = save.base.credits
+    this.base.pushToStore()
+
+    this.add
+      .text(BASE_X, BASE_Y + 40, 'BASE', {
+        color: '#88ccff',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+      })
+      .setOrigin(0.5, 0)
+
+    // Restore ships
+    for (const snap of save.ships) {
+      const ship = new Ship(
+        this,
+        snap.x,
+        snap.y,
+        snap.name,
+        { x: BASE_X, y: BASE_Y },
+        this.base,
+        snap.id,
+      )
+      ship.heading = snap.heading
+      ship.shipState = snap.shipState
+      ship.target = snap.target
+      ship.cargoContents = { ...snap.cargoContents }
+      ship.autoCycle = snap.autoCycle
+      ship.unloadTimer = snap.unloadTimer
+      ship.setAngle(snap.heading)
+
+      this.ships.push(ship)
+      this.base.registerShip(ship.id)
+      this.attachShipInput(ship)
+    }
+
+    // Resolve miningTargetId → live Asteroid instance
+    for (let i = 0; i < this.ships.length; i++) {
+      const snap = save.ships[i]
+      const ship = this.ships[i]
+      if (snap.miningTargetId !== null) {
+        const asteroid = this.asteroids.find(a => a.id === snap.miningTargetId) ?? null
+        ship.miningTarget = asteroid
+        if (asteroid === null && (ship.shipState === 'traveling-to-target' || ship.shipState === 'mining')) {
+          ship.shipState = 'idle'
+          ship.target = null
+        }
+      }
+    }
+  }
+
+  private buildSaveState(): SaveState {
+    return {
+      schemaVersion: 1,
+      worldSeed: gameState.worldSeed,
+      gameClock: this.gameClock,
+      base: {
+        storage: { ...this.base.storage },
+        credits: this.base.credits,
+      },
+      asteroids: this.asteroids.map(a => ({
+        id: a.id,
+        x: a.x,
+        y: a.y,
+        resourceType: a.resourceType,
+        sizeCategory: a.sizeCategory,
+        currentQuantity: a.currentQuantity,
+        maxQuantity: a.maxQuantity,
+      })),
+      ships: this.ships.map(s => ({
+        id: s.id,
+        name: s.shipName,
+        x: s.x,
+        y: s.y,
+        heading: s.heading,
+        shipState: s.shipState,
+        target: s.target,
+        miningTargetId: s.miningTarget?.id ?? null,
+        cargoContents: { ...s.cargoContents },
+        cargoCapacity: s.cargoCapacity,
+        miningRate: s.miningRate,
+        autoCycle: s.autoCycle,
+        unloadTimer: s.unloadTimer,
+      })),
+    }
   }
 
   private generateAsteroidTextures(): void {
@@ -110,6 +230,10 @@ export class SpaceScene extends Phaser.Scene {
     const ship = new Ship(this, 0, 0, 'Hauler-01', { x: BASE_X, y: BASE_Y }, this.base)
     this.ships.push(ship)
     this.base.registerShip(ship.id)
+    this.attachShipInput(ship)
+  }
+
+  private attachShipInput(ship: Ship): void {
     ship.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown()) return
       this.selectShip(ship)
@@ -202,6 +326,8 @@ export class SpaceScene extends Phaser.Scene {
       this.base.sellResource(cmd.resourceType)
     } else if (cmd.type === 'commissionShip') {
       this.commissionNewShip()
+    } else if (cmd.type === 'manualSave') {
+      GameSaveService.save(this.buildSaveState())
     }
   }
 
@@ -216,10 +342,7 @@ export class SpaceScene extends Phaser.Scene {
     const ship = new Ship(this, spawnX, spawnY, name, { x: BASE_X, y: BASE_Y }, this.base)
     this.ships.push(ship)
     this.base.registerShip(ship.id)
-    ship.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
-      if (!pointer.leftButtonDown()) return
-      this.selectShip(ship)
-    })
+    this.attachShipInput(ship)
   }
 
   private setupInput(): void {
@@ -336,6 +459,14 @@ export class SpaceScene extends Phaser.Scene {
     this.drainCommandQueue()
 
     const dt = delta / 1000
+    this.gameClock += dt
+
+    this.autoSaveAccumulator += dt
+    if (this.autoSaveAccumulator >= AUTO_SAVE_INTERVAL) {
+      this.autoSaveAccumulator = 0
+      GameSaveService.save(this.buildSaveState())
+    }
+
     const cam = this.cameras.main
     const speed = PAN_SPEED * dt
 

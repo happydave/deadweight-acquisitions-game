@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { mount } from 'svelte'
 import { BootScene } from './scenes/BootScene'
+import { MainMenuScene } from './scenes/MainMenuScene'
 import { SpaceScene } from './scenes/SpaceScene'
 import Hud from './ui/Hud.svelte'
 import EntityPanel from './ui/EntityPanel.svelte'
@@ -13,7 +14,7 @@ new Phaser.Game({
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [BootScene, SpaceScene],
+  scene: [BootScene, MainMenuScene, SpaceScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,

@@ -51,9 +51,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     name: string,
     basePosition: { x: number; y: number },
     base: Base,
+    id?: string,
   ) {
     super(scene, x, y, SHIP_TEXTURE_KEY)
-    this.id = nanoid()
+    this.id = id ?? nanoid()
     this.shipName = name
     this.cargoCapacity = 200
     this.miningRate = SHIP_MINING_RATE
