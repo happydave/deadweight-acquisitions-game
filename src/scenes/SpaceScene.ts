@@ -47,6 +47,21 @@ const SELECTION_RING_COLOR = 0x44ffaa
 const SELECTION_RING_RADIUS = 20
 const SELECTION_RING_ALPHA = 0.8
 
+const MINIMAP_SIZE = 180
+const MINIMAP_MARGIN = 10
+const MINIMAP_ALPHA = 0.65
+const MINIMAP_DOT_PLANET = 6
+const MINIMAP_DOT_BASE = 4
+const MINIMAP_DOT_SHIP = 3
+const MINIMAP_DOT_ASTEROID = 2
+const MINIMAP_COLOR_BG = 0x050a14
+const MINIMAP_COLOR_BORDER = 0x334466
+const MINIMAP_COLOR_PLANET = 0x3a6090
+const MINIMAP_COLOR_BASE = 0x88ccff
+const MINIMAP_COLOR_ASTEROID = 0x777788
+const MINIMAP_COLOR_COMPANY = 0x44ffdd
+const MINIMAP_COLOR_SHIP = 0xffee44
+
 export class SpaceScene extends Phaser.Scene {
   private starLayers: Phaser.GameObjects.TileSprite[] = []
   private asteroids: Asteroid[] = []
@@ -71,6 +86,7 @@ export class SpaceScene extends Phaser.Scene {
   private autoSaveAccumulator = 0
   private companyArrivalAccumulator = 0
   private followCam = false
+  private minimap!: Phaser.GameObjects.Graphics
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -95,6 +111,10 @@ export class SpaceScene extends Phaser.Scene {
       this.spawnWorld()
       this.spawnStarterShip()
     }
+
+    this.minimap = this.add.graphics()
+    this.minimap.setScrollFactor(0)
+    this.minimap.setDepth(1000)
 
     this.setupCamera()
     this.setupInput()
@@ -317,6 +337,38 @@ export class SpaceScene extends Phaser.Scene {
     this.cameras.main.stopFollow()
   }
 
+  private drawMinimap(): void {
+    const mmLeft = this.scale.width - MINIMAP_SIZE - MINIMAP_MARGIN
+    const mmTop = MINIMAP_MARGIN
+
+    this.minimap.clear()
+
+    this.minimap.fillStyle(MINIMAP_COLOR_BG, MINIMAP_ALPHA)
+    this.minimap.fillRect(mmLeft, mmTop, MINIMAP_SIZE, MINIMAP_SIZE)
+    this.minimap.lineStyle(1, MINIMAP_COLOR_BORDER, 0.9)
+    this.minimap.strokeRect(mmLeft, mmTop, MINIMAP_SIZE, MINIMAP_SIZE)
+
+    const wx = (worldX: number) => mmLeft + (worldX / WORLD_SIZE + 0.5) * MINIMAP_SIZE
+    const wy = (worldY: number) => mmTop + (worldY / WORLD_SIZE + 0.5) * MINIMAP_SIZE
+
+    this.minimap.fillStyle(MINIMAP_COLOR_PLANET, 0.9)
+    this.minimap.fillCircle(wx(0), wy(0), MINIMAP_DOT_PLANET)
+
+    this.minimap.fillStyle(MINIMAP_COLOR_BASE, 1)
+    this.minimap.fillRect(wx(BASE_X) - MINIMAP_DOT_BASE / 2, wy(BASE_Y) - MINIMAP_DOT_BASE / 2, MINIMAP_DOT_BASE, MINIMAP_DOT_BASE)
+
+    for (const asteroid of this.asteroids) {
+      const color = asteroid.isCompany ? MINIMAP_COLOR_COMPANY : MINIMAP_COLOR_ASTEROID
+      this.minimap.fillStyle(color, 0.85)
+      this.minimap.fillCircle(wx(asteroid.x), wy(asteroid.y), MINIMAP_DOT_ASTEROID)
+    }
+
+    for (const ship of this.ships) {
+      this.minimap.fillStyle(MINIMAP_COLOR_SHIP, 1)
+      this.minimap.fillCircle(wx(ship.x), wy(ship.y), MINIMAP_DOT_SHIP)
+    }
+  }
+
   private companyArrivalInterval(): number {
     const natural = this.asteroids.filter(a => !a.isCompany)
     if (natural.length === 0) return COMPANY_ARRIVAL_MIN_INTERVAL
@@ -473,6 +525,19 @@ export class SpaceScene extends Phaser.Scene {
         }
 
         if (pointer.leftButtonDown()) {
+          const mmLeft = this.scale.width - MINIMAP_SIZE - MINIMAP_MARGIN
+          const mmTop = MINIMAP_MARGIN
+          if (
+            pointer.x >= mmLeft && pointer.x <= mmLeft + MINIMAP_SIZE &&
+            pointer.y >= mmTop && pointer.y <= mmTop + MINIMAP_SIZE
+          ) {
+            if (this.followCam) this.cancelFollowCam()
+            const worldX = (pointer.x - mmLeft - MINIMAP_SIZE / 2) * (WORLD_SIZE / MINIMAP_SIZE)
+            const worldY = (pointer.y - mmTop - MINIMAP_SIZE / 2) * (WORLD_SIZE / MINIMAP_SIZE)
+            this.cameras.main.pan(worldX, worldY, 300, 'Power2')
+            return
+          }
+
           const hitShip = targets.some(t => t instanceof Ship)
           if (!hitShip) {
             const hitBase = targets.find(t => t instanceof Base)
@@ -604,5 +669,7 @@ export class SpaceScene extends Phaser.Scene {
     if (this.selectedShip && this.selectionRing) {
       this.drawSelectionRing()
     }
+
+    this.drawMinimap()
   }
 }
