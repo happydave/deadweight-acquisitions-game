@@ -1,0 +1,19 @@
+{
+  "name": "deadweight-acquisitions",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "compile": "tsc --noEmit"
+  },
+  "dependencies": {
+    "phaser": "^3",
+    "svelte": "^5"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5",
+    "typescript": "^5",
+    "vite": "^8"
+  }
+}
