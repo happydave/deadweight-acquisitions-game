@@ -10,7 +10,7 @@ import { Asteroid } from '../entities/Asteroid'
 import { Base, generateBaseTexture } from '../entities/Base'
 import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
 import { gameState } from '../state/gameState'
-import { commandQueue } from '../state/commandStore'
+import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
 import { basePanelOpen } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
@@ -190,11 +190,36 @@ export class SpaceScene extends Phaser.Scene {
     if (commands.length === 0) return
     commandQueue.set([])
     for (const cmd of commands) {
-      if (cmd.type === 'toggleAutoCycle') {
-        const ship = this.ships.find(s => s.id === cmd.shipId)
-        if (ship) ship.setAutoCycle(!ship.autoCycle)
-      }
+      this.handleCommand(cmd)
     }
+  }
+
+  private handleCommand(cmd: GameCommand): void {
+    if (cmd.type === 'toggleAutoCycle') {
+      const ship = this.ships.find(s => s.id === cmd.shipId)
+      if (ship) ship.setAutoCycle(!ship.autoCycle)
+    } else if (cmd.type === 'sellResource') {
+      this.base.sellResource(cmd.resourceType)
+    } else if (cmd.type === 'commissionShip') {
+      this.commissionNewShip()
+    }
+  }
+
+  private commissionNewShip(): void {
+    if (!this.base.commissionShip()) return
+    const index = this.ships.length + 1
+    const name = `Hauler-${String(index).padStart(2, '0')}`
+    const offset = 40 + (index % 4) * 20
+    const angle = (index * 90) % 360
+    const spawnX = BASE_X + Math.cos(Phaser.Math.DegToRad(angle)) * offset
+    const spawnY = BASE_Y + Math.sin(Phaser.Math.DegToRad(angle)) * offset
+    const ship = new Ship(this, spawnX, spawnY, name, { x: BASE_X, y: BASE_Y }, this.base)
+    this.ships.push(ship)
+    this.base.registerShip(ship.id)
+    ship.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) return
+      this.selectShip(ship)
+    })
   }
 
   private setupInput(): void {
@@ -214,6 +239,7 @@ export class SpaceScene extends Phaser.Scene {
 
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC).on('down', () => {
       this.clearSelection()
+      basePanelOpen.set(false)
     })
 
     this.input.on(
@@ -247,6 +273,7 @@ export class SpaceScene extends Phaser.Scene {
                 }
               } else {
                 this.clearSelection()
+                basePanelOpen.set(false)
               }
             }
           }

@@ -1,5 +1,9 @@
 import { writable } from 'svelte/store'
+import type { ResourceType } from '../world/worldConfig'
 
-export type ShipCommand = { type: 'toggleAutoCycle'; shipId: string }
+export type GameCommand =
+  | { type: 'toggleAutoCycle'; shipId: string }
+  | { type: 'sellResource'; resourceType: ResourceType }
+  | { type: 'commissionShip' }
 
-export const commandQueue = writable<ShipCommand[]>([])
+export const commandQueue = writable<GameCommand[]>([])

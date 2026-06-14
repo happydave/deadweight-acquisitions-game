@@ -1,5 +1,8 @@
 <script lang="ts">
   import { baseState, basePanelOpen } from '../state/baseStore'
+  import { commandQueue } from '../state/commandStore'
+  import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
+  import { SHIP_COMMISSION_COST } from '../entities/Base'
 
   const RESOURCE_LABELS: Record<string, string> = {
     iron: 'Iron',
@@ -8,42 +11,69 @@
     'rare-metals': 'Rare Metals',
   }
 
-  function totalStored(storage: Record<string, number>): number {
-    return Object.values(storage).reduce((sum, n) => sum + n, 0)
-  }
+  const RESOURCE_ORDER: ResourceType[] = ['iron', 'ice', 'silicates', 'rare-metals']
 
-  function storageEntries(storage: Record<string, number>): [string, number][] {
-    return Object.entries(storage).filter(([, qty]) => qty > 0)
+  function totalStored(storage: Partial<Record<string, number>>): number {
+    return Object.values(storage).reduce((sum, n) => sum + (n ?? 0), 0)
   }
 
   function close(): void {
     basePanelOpen.set(false)
   }
+
+  function sellResource(type: ResourceType): void {
+    commandQueue.update(q => [...q, { type: 'sellResource', resourceType: type }])
+  }
+
+  function commissionShip(): void {
+    commandQueue.update(q => [...q, { type: 'commissionShip' }])
+  }
 </script>
 
 {#if $basePanelOpen}
   <div class="panel">
+    <!-- Header -->
     <div class="header">
-      <span class="title">BASE STORAGE</span>
+      <span class="title">BASE</span>
       <button class="close-btn" on:click={close}>✕</button>
     </div>
     <div class="row">
-      <span class="label">Total</span>
-      <span class="value">{Math.floor(totalStored($baseState.storage))} / {$baseState.storageCapacity}</span>
+      <span class="label">Credits</span>
+      <span class="value credits">{Math.floor($baseState.credits)}</span>
     </div>
     <div class="row">
-      <span class="label">Credits</span>
-      <span class="value credits">{$baseState.credits}</span>
+      <span class="label">Storage</span>
+      <span class="value">{Math.floor(totalStored($baseState.storage))} / {$baseState.storageCapacity}</span>
     </div>
-    {#each storageEntries($baseState.storage) as [type, qty]}
-      <div class="row storage-row">
-        <span class="label resource-{type}">{RESOURCE_LABELS[type] ?? type}</span>
-        <span class="value">{Math.floor(qty)}</span>
+
+    <!-- Market -->
+    <div class="section-title">MARKET</div>
+    {#each RESOURCE_ORDER as type}
+      {@const qty = Math.floor($baseState.storage[type] ?? 0)}
+      {@const price = RESOURCE_SELL_PRICES[type]}
+      <div class="row market-row" class:disabled={qty <= 0}>
+        <span class="label resource-{type}">{RESOURCE_LABELS[type]}</span>
+        <span class="qty">{qty}</span>
+        <span class="price">@ {price}cr</span>
+        <button
+          class="sell-btn"
+          disabled={qty <= 0}
+          on:click={() => sellResource(type)}
+        >Sell</button>
       </div>
     {/each}
-    {#if storageEntries($baseState.storage).length === 0}
-      <div class="empty">Empty</div>
-    {/if}
+
+    <!-- Shipyard -->
+    <div class="section-title">SHIPYARD</div>
+    <div class="row shipyard-row" class:disabled={$baseState.credits < SHIP_COMMISSION_COST}>
+      <span class="label">Hauler</span>
+      <span class="price">{SHIP_COMMISSION_COST}cr</span>
+      <button
+        class="commission-btn"
+        disabled={$baseState.credits < SHIP_COMMISSION_COST}
+        on:click={commissionShip}
+      >Commission</button>
+    </div>
   </div>
 {/if}
 
@@ -52,11 +82,11 @@
     position: absolute;
     bottom: 24px;
     left: 24px;
-    background: rgba(5, 10, 20, 0.85);
+    background: rgba(5, 10, 20, 0.90);
     border: 1px solid #2a4a6a;
     border-radius: 4px;
     padding: 12px 16px;
-    min-width: 200px;
+    min-width: 240px;
     font-family: monospace;
     font-size: 12px;
     color: #aaccee;
@@ -67,7 +97,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 
   .title {
@@ -92,16 +122,14 @@
 
   .row {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
     margin-bottom: 4px;
-  }
-
-  .storage-row {
-    padding-left: 8px;
   }
 
   .label {
     color: #6a8a9a;
+    flex: 1;
   }
 
   .value {
@@ -112,10 +140,60 @@
     color: #ffdd88;
   }
 
-  .empty {
-    color: #4a6a7a;
-    font-size: 11px;
-    margin-top: 4px;
+  .section-title {
+    font-size: 10px;
+    color: #3a6a8a;
+    letter-spacing: 0.08em;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    border-top: 1px solid #1a3a5a;
+    padding-top: 6px;
+  }
+
+  .market-row .qty {
+    color: #cce0f0;
+    min-width: 36px;
+    text-align: right;
+  }
+
+  .price {
+    color: #6a8a9a;
+    font-size: 10px;
+    min-width: 40px;
+  }
+
+  .sell-btn,
+  .commission-btn {
+    background: rgba(40, 80, 120, 0.6);
+    border: 1px solid #2a5a8a;
+    border-radius: 3px;
+    color: #aaccee;
+    font-family: monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+
+  .sell-btn:hover:not(:disabled),
+  .commission-btn:hover:not(:disabled) {
+    background: rgba(60, 100, 150, 0.7);
+  }
+
+  .sell-btn:disabled,
+  .commission-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .disabled .label,
+  .disabled .qty,
+  .disabled .price {
+    opacity: 0.4;
+  }
+
+  .shipyard-row {
+    justify-content: space-between;
   }
 
   .resource-iron         { color: #c07840; }

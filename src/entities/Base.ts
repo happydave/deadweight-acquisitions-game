@@ -1,10 +1,11 @@
 import Phaser from 'phaser'
 import { baseState } from '../state/baseStore'
-import type { ResourceType } from '../world/worldConfig'
+import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
 export const STARTING_CREDITS = 750
+export const SHIP_COMMISSION_COST = 500
 
 const OUTER_R = 32
 const INNER_R = 20
@@ -64,6 +65,21 @@ export class Base extends Phaser.GameObjects.Image {
   registerShip(id: string): void {
     this.ships.push(id)
     this.pushToStore()
+  }
+
+  sellResource(type: ResourceType): void {
+    const qty = this.storage[type] ?? 0
+    if (qty <= 0) return
+    this.storage[type] = 0
+    this.credits += qty * RESOURCE_SELL_PRICES[type]
+    this.pushToStore()
+  }
+
+  commissionShip(): boolean {
+    if (this.credits < SHIP_COMMISSION_COST) return false
+    this.credits -= SHIP_COMMISSION_COST
+    this.pushToStore()
+    return true
   }
 
   pushToStore(): void {
