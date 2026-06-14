@@ -1,4 +1,12 @@
 import Phaser from 'phaser'
+import { generateWorld } from '../world/worldGenerator'
+import {
+  ASTEROID_TEXTURE_SIZE,
+  RESOURCE_COLORS,
+  type ResourceType,
+} from '../world/worldConfig'
+import { Asteroid } from '../entities/Asteroid'
+import { gameState } from '../state/gameState'
 
 const WORLD_SIZE = 6000
 const MAX_ZOOM = 2
@@ -13,6 +21,7 @@ const STAR_LAYERS = [
 
 export class SpaceScene extends Phaser.Scene {
   private starLayers: Phaser.GameObjects.TileSprite[] = []
+  private asteroids: Asteroid[] = []
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private wasd!: {
     up: Phaser.Input.Keyboard.Key
@@ -31,10 +40,37 @@ export class SpaceScene extends Phaser.Scene {
 
   create(): void {
     this.buildStarLayers()
+    this.generateAsteroidTextures()
     this.createBase()
+    this.spawnWorld()
     this.setupCamera()
     this.setupInput()
     this.scale.on('resize', (size: Phaser.Structs.Size) => this.onResize(size))
+  }
+
+  private generateAsteroidTextures(): void {
+    const resourceTypes = Object.keys(RESOURCE_COLORS) as ResourceType[]
+    for (const type of resourceTypes) {
+      const key = `asteroid-${type}`
+      if (this.textures.exists(key)) continue
+      const color = RESOURCE_COLORS[type]
+      const s = ASTEROID_TEXTURE_SIZE
+      const r = s / 2
+      const gfx = this.make.graphics({ x: 0, y: 0 })
+      gfx.fillStyle(color, 1)
+      gfx.fillCircle(r, r, r)
+      gfx.lineStyle(1, 0xffffff, 0.25)
+      gfx.strokeCircle(r, r, r - 1)
+      gfx.generateTexture(key, s, s)
+      gfx.destroy()
+    }
+  }
+
+  private spawnWorld(): void {
+    const seed = Math.floor(Math.random() * 0x100000000)
+    gameState.worldSeed = seed
+    const asteroidData = generateWorld(seed)
+    this.asteroids = asteroidData.map(data => new Asteroid(this, data))
   }
 
   private buildStarLayers(): void {
