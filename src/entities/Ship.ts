@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { selectedShip, type ShipState } from '../state/shipStore'
 import type { ResourceType } from '../world/worldConfig'
 import type { Asteroid } from './Asteroid'
+import type { Base } from './Base'
 
 export const SHIP_TEXTURE_KEY = 'ship'
 export const SHIP_SPEED = 180          // world units per second
@@ -11,6 +12,7 @@ export const ARRIVAL_RADIUS = 20       // world units — used for base arrival
 export const MINING_PROXIMITY = 60     // world units — arrival threshold for asteroid
 export const DRAG_ORDER_THRESHOLD = 5  // screen pixels
 export const SHIP_MINING_RATE = 10     // units per second
+export const UNLOAD_DURATION = 3       // seconds
 
 export function generateShipTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(SHIP_TEXTURE_KEY)) return
@@ -32,12 +34,14 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   readonly cargoCapacity: number
   readonly miningRate: number
   readonly basePosition: { x: number; y: number }
+  readonly base: Base
   cargoContents: Partial<Record<ResourceType, number>>
   shipState: ShipState
   target: { x: number; y: number } | null
   heading: number   // degrees, 0 = east
   miningTarget: Asteroid | null
   autoCycle: boolean
+  unloadTimer: number
 
   constructor(
     scene: Phaser.Scene,
@@ -45,6 +49,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     y: number,
     name: string,
     basePosition: { x: number; y: number },
+    base: Base,
   ) {
     super(scene, x, y, SHIP_TEXTURE_KEY)
     this.id = nanoid()
@@ -52,12 +57,14 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.cargoCapacity = 200
     this.miningRate = SHIP_MINING_RATE
     this.basePosition = basePosition
+    this.base = base
     this.cargoContents = {}
     this.shipState = 'idle'
     this.target = null
     this.heading = 0
     this.miningTarget = null
     this.autoCycle = false
+    this.unloadTimer = 0
 
     scene.add.existing(this)
     scene.physics.add.existing(this)
@@ -98,7 +105,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         this.steerTowardTarget(dt, ARRIVAL_RADIUS, () => this.beginUnloading())
         break
       case 'unloading':
-        this.finishUnloading()
+        this.updateUnloading(dt)
         break
       case 'idle':
         break
@@ -186,17 +193,22 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
 
   private beginUnloading(): void {
     this.shipState = 'unloading'
+    this.unloadTimer = 0
     this.target = null
     this.pushToStore()
   }
 
-  private finishUnloading(): void {
+  private updateUnloading(dt: number): void {
+    if (!this.base.canAcceptCargo(this.cargoContents)) return
+
+    this.unloadTimer += dt
+    if (this.unloadTimer < UNLOAD_DURATION) return
+
+    this.base.acceptCargo(this.cargoContents)
     this.cargoContents = {}
-    if (
-      this.autoCycle &&
-      this.miningTarget !== null &&
-      this.miningTarget.currentQuantity > 0
-    ) {
+    this.unloadTimer = 0
+
+    if (this.autoCycle && this.miningTarget !== null && this.miningTarget.currentQuantity > 0) {
       this.issueMineOrder(this.miningTarget)
     } else {
       this.miningTarget = null

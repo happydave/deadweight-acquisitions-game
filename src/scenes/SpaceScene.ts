@@ -7,10 +7,12 @@ import {
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
+import { Base, generateBaseTexture } from '../entities/Base'
 import { Ship, generateShipTexture, DRAG_ORDER_THRESHOLD } from '../entities/Ship'
 import { gameState } from '../state/gameState'
 import { commandQueue } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
+import { basePanelOpen } from '../state/baseStore'
 
 const WORLD_SIZE = 6000
 const MAX_ZOOM = 2
@@ -33,6 +35,7 @@ export class SpaceScene extends Phaser.Scene {
   private starLayers: Phaser.GameObjects.TileSprite[] = []
   private asteroids: Asteroid[] = []
   private ships: Ship[] = []
+  private base!: Base
   private selectedShip: Ship | null = null
   private selectionRing: Phaser.GameObjects.Graphics | null = null
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
@@ -57,7 +60,8 @@ export class SpaceScene extends Phaser.Scene {
     this.buildStarLayers()
     this.generateAsteroidTextures()
     generateShipTexture(this)
-    this.createBase()
+    generateBaseTexture(this)
+    this.spawnBase()
     this.spawnWorld()
     this.spawnStarterShip()
     this.setupCamera()
@@ -90,9 +94,21 @@ export class SpaceScene extends Phaser.Scene {
     this.asteroids = asteroidData.map(data => new Asteroid(this, data))
   }
 
+  private spawnBase(): void {
+    this.base = new Base(this, BASE_X, BASE_Y)
+    this.add
+      .text(BASE_X, BASE_Y + 40, 'BASE', {
+        color: '#88ccff',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+      })
+      .setOrigin(0.5, 0)
+  }
+
   private spawnStarterShip(): void {
-    const ship = new Ship(this, 0, 0, 'Hauler-01', { x: BASE_X, y: BASE_Y })
+    const ship = new Ship(this, 0, 0, 'Hauler-01', { x: BASE_X, y: BASE_Y }, this.base)
     this.ships.push(ship)
+    this.base.registerShip(ship.id)
     ship.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       if (!pointer.leftButtonDown()) return
       this.selectShip(ship)
@@ -155,17 +171,6 @@ export class SpaceScene extends Phaser.Scene {
     }
   }
 
-  private createBase(): void {
-    const gfx = this.add.graphics()
-    gfx.fillStyle(0x44aaff, 1)
-    gfx.fillCircle(BASE_X, BASE_Y, 20)
-    gfx.lineStyle(2, 0x88ccff, 1)
-    gfx.strokeCircle(BASE_X, BASE_Y, 32)
-    this.add
-      .text(BASE_X, BASE_Y + 40, 'BASE', { color: '#88ccff', fontSize: '12px', fontFamily: 'monospace' })
-      .setOrigin(0.5, 0)
-  }
-
   private setupCamera(): void {
     const cam = this.cameras.main
     const half = WORLD_SIZE / 2
@@ -226,16 +231,22 @@ export class SpaceScene extends Phaser.Scene {
         if (pointer.leftButtonDown()) {
           const hitShip = targets.some(t => t instanceof Ship)
           if (!hitShip) {
-            const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
-            if (hitAsteroid) {
-              if (this.selectedShip) {
-                this.selectedShip.issueMineOrder(hitAsteroid)
-              } else {
-                selectedShip.set(null)
-                hitAsteroid.selectSelf()
-              }
+            const hitBase = targets.find(t => t instanceof Base)
+            if (hitBase) {
+              selectedAsteroid.set(null)
+              basePanelOpen.set(true)
             } else {
-              this.clearSelection()
+              const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
+              if (hitAsteroid) {
+                if (this.selectedShip) {
+                  this.selectedShip.issueMineOrder(hitAsteroid)
+                } else {
+                  selectedShip.set(null)
+                  hitAsteroid.selectSelf()
+                }
+              } else {
+                this.clearSelection()
+              }
             }
           }
         }
