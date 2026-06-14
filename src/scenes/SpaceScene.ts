@@ -57,6 +57,7 @@ export class SpaceScene extends Phaser.Scene {
   private minZoom = 0.1
   private gameClock = 0
   private autoSaveAccumulator = 0
+  private followCam = false
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -259,6 +260,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private clearSelection(): void {
+    this.cancelFollowCam()
     if (this.selectedShip) {
       this.selectedShip.deselect()
       this.selectedShip = null
@@ -279,6 +281,21 @@ export class SpaceScene extends Phaser.Scene {
       this.selectedShip.y,
       SELECTION_RING_RADIUS,
     )
+  }
+
+  private toggleFollowCam(): void {
+    if (!this.selectedShip) return
+    if (this.followCam) {
+      this.cancelFollowCam()
+    } else {
+      this.followCam = true
+      this.cameras.main.startFollow(this.selectedShip, false, 1, 1)
+    }
+  }
+
+  private cancelFollowCam(): void {
+    this.followCam = false
+    this.cameras.main.stopFollow()
   }
 
   private buildStarLayers(): void {
@@ -373,10 +390,15 @@ export class SpaceScene extends Phaser.Scene {
       basePanelOpen.set(false)
     })
 
+    keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F).on('down', () => {
+      this.toggleFollowCam()
+    })
+
     this.input.on(
       'pointerdown',
       (pointer: Phaser.Input.Pointer, targets: Phaser.GameObjects.GameObject[]) => {
         if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
+          if (this.followCam) this.cancelFollowCam()
           this.isDragging = true
           this.dragLastX = pointer.x
           this.dragLastY = pointer.y
@@ -483,11 +505,13 @@ export class SpaceScene extends Phaser.Scene {
     const up = this.cursors.up.isDown || this.wasd.up.isDown
     const down = this.cursors.down.isDown || this.wasd.down.isDown
 
-    if (left) cam.scrollX -= speed
-    else if (right) cam.scrollX += speed
+    if (!this.followCam) {
+      if (left) cam.scrollX -= speed
+      else if (right) cam.scrollX += speed
 
-    if (up) cam.scrollY -= speed
-    else if (down) cam.scrollY += speed
+      if (up) cam.scrollY -= speed
+      else if (down) cam.scrollY += speed
+    }
 
     for (let i = 0; i < this.starLayers.length; i++) {
       this.starLayers[i].tilePositionX = cam.scrollX * STAR_LAYERS[i].parallax
