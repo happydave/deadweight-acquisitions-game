@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectedShip, selectedAsteroid } from '../state/shipStore'
   import { selectedAutoMiner } from '../state/autoMinerStore'
+  import { selectedCargoNet } from '../state/cargoNetStore'
   import { NET_CAPACITY } from '../entities/AutoMiner'
 
   function cargoTotal(contents: Record<string, number>): number {
@@ -23,7 +24,23 @@
   }
 </script>
 
-{#if $selectedAutoMiner}
+{#if $selectedCargoNet}
+  <div class="panel">
+    <div class="name cargonet-name">CARGO NET</div>
+    <div class="row">
+      <span class="label">State</span>
+      <span class="value state-cn-{$selectedCargoNet.state}">{$selectedCargoNet.state}</span>
+    </div>
+    <div class="row">
+      <span class="label">Resource</span>
+      <span class="value resource-{$selectedCargoNet.resourceType}">{$selectedCargoNet.resourceType}</span>
+    </div>
+    <div class="row">
+      <span class="label">Quantity</span>
+      <span class="value">{$selectedCargoNet.quantity}</span>
+    </div>
+  </div>
+{:else if $selectedAutoMiner}
   <div class="panel">
     <div class="name autominer-name">AUTOMINER</div>
     <div class="row">
@@ -177,6 +194,14 @@
     color: #88ccdd;
   }
 
+  .cargonet-name {
+    color: #ffcc44;
+  }
+
+  .state-cn-full-tethered { color: #88ffaa; }
+  .state-cn-in-transit    { color: #ffdd88; }
+  .state-cn-unloading     { color: #44aaff; }
+
   .payload-net-store  { color: #88ddaa; }
   .payload-auto-miner { color: #88ccdd; }
 
@@ -187,6 +212,7 @@
   .state-traveling-to-asteroid     { color: #ffdd88; }
   .state-deploying-miner           { color: #ffbb44; }
   .state-waiting-at-asteroid       { color: #88ffaa; }
+  .state-collecting-nets           { color: #88ddff; }
 
   .state-am-in-transit             { color: #6a8a9a; }
   .state-am-deploying              { color: #ffdd88; }

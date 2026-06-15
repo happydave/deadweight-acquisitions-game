@@ -85,7 +85,33 @@ function migrate(raw: SaveState): SaveState | null {
         })),
       } as unknown as SaveState
       // falls through
-    case 6:
+    case 6: {
+      // v6 → v7: tetheredNets[] on miners becomes tetheredNetIds: string[]; add top-level cargoNets
+      type V6TetheredNet = { id: string; resourceType: string; quantity: number }
+      type V6Miner = { tetheredNets?: V6TetheredNet[]; asteroidId?: string | null; [key: string]: unknown }
+      const cargoNets: Array<Record<string, unknown>> = []
+      raw = {
+        ...raw,
+        schemaVersion: 7,
+        cargoNets,
+        autoMiners: (raw.autoMiners as unknown as V6Miner[]).map(m => {
+          const tetheredNets = m.tetheredNets ?? []
+          for (const tn of tetheredNets) {
+            cargoNets.push({
+              id: tn.id,
+              state: 'full-tethered',
+              resourceType: tn.resourceType,
+              quantity: tn.quantity,
+              asteroidId: m.asteroidId ?? null,
+            })
+          }
+          const { tetheredNets: _tn, ...rest } = m
+          return { ...rest, tetheredNetIds: tetheredNets.map(tn => tn.id) }
+        }),
+      } as unknown as SaveState
+      // falls through
+    }
+    case 7:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

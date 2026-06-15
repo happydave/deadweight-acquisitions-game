@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { selectedAutoMiner } from '../state/autoMinerStore'
 import type { ResourceType } from '../world/worldConfig'
 import type { Asteroid } from './Asteroid'
+import { CargoNet } from './CargoNet'
 
 export type AutoMinerState =
   | 'in-transit'
@@ -12,12 +13,6 @@ export type AutoMinerState =
   | 'ejecting-net'
   | 'net-starved'
   | 'standby-beaconing'
-
-export interface TetheredNetData {
-  readonly id: string
-  readonly resourceType: ResourceType
-  readonly quantity: number
-}
 
 export const MINER_RATE = 5               // resource units per second
 export const NET_CAPACITY = 50            // resource units per net
@@ -69,7 +64,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   asteroidId: string | null
   spareNetCount: number
   activeNetFill: number
-  tetheredNets: TetheredNetData[]
+  tetheredNetIds: string[]
   readonly technologyLevel: number
   isSelected: boolean
 
@@ -80,7 +75,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     this.asteroidId = null
     this.spareNetCount = 0
     this.activeNetFill = 0
-    this.tetheredNets = []
+    this.tetheredNetIds = []
     this.technologyLevel = 1
     this.isSelected = false
 
@@ -111,12 +106,13 @@ export class AutoMiner extends Phaser.GameObjects.Image {
 
   private ejectNet(resourceType: ResourceType): void {
     this.state = 'ejecting-net'
-    this.tetheredNets = [
-      ...this.tetheredNets,
-      { id: nanoid(), resourceType, quantity: this.activeNetFill },
-    ]
+
+    const net = new CargoNet(this.scene, resourceType, this.activeNetFill, this.asteroidId)
+    net.setPosition(this.x + 10, this.y - 10)
+    this.tetheredNetIds = [...this.tetheredNetIds, net.id]
     this.activeNetFill = 0
 
+    this.emit('net-ejected', net)
     this.playEjectEffect()
 
     if (this.spareNetCount > 0) {
@@ -160,7 +156,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
       asteroidId: this.asteroidId,
       activeNetFill: this.activeNetFill,
       spareNetCount: this.spareNetCount,
-      tetheredNetCount: this.tetheredNets.length,
+      tetheredNetCount: this.tetheredNetIds.length,
     })
   }
 

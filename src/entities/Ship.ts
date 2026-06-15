@@ -113,6 +113,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         break
       case 'deploying-miner':
       case 'waiting-at-asteroid':
+      case 'collecting-nets':
         this.setVelocity(0, 0)
         break
       case 'idle':
@@ -157,7 +158,21 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.pushToStore()
   }
 
+  beginCollecting(): void {
+    this.shipState = 'collecting-nets'
+    this.setVelocity(0, 0)
+    this.pushToStore()
+  }
+
+  departForBase(): void {
+    this.shipState = 'traveling-to-base'
+    this.target = { ...this.basePosition }
+    this.asteroidTarget = null
+    this.pushToStore()
+  }
+
   private beginUnloading(): void {
+    this.emit('begin-unloading')
     this.shipState = 'unloading'
     this.unloadTimer = 0
     this.target = null

@@ -29,6 +29,14 @@ import {
   MINER_DEPLOY_PROXIMITY,
   type AutoMinerState,
 } from '../entities/AutoMiner'
+import {
+  CargoNet,
+  generateCargoNetTexture,
+  NET_LEAKAGE_FRACTION,
+  NET_COLLECT_DURATION_MS,
+  TETHER_LINE_COLOR,
+  TETHER_LINE_ALPHA,
+} from '../entities/CargoNet'
 import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
@@ -81,9 +89,13 @@ export class SpaceScene extends Phaser.Scene {
   private ships: Ship[] = []
   private autoMiners: AutoMiner[] = []
   private autoMinerMap: Map<string, AutoMiner> = new Map()
+  private cargoNets: CargoNet[] = []
+  private cargoNetMap: Map<string, CargoNet> = new Map()
   private base!: Base
   private selectedShip: Ship | null = null
   private selectedAutoMinerEntity: AutoMiner | null = null
+  private selectedCargoNetEntity: CargoNet | null = null
+  private tetherGfx: Phaser.GameObjects.Graphics | null = null
   private selectionRing: Phaser.GameObjects.Graphics | null = null
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private wasd!: {
@@ -118,6 +130,8 @@ export class SpaceScene extends Phaser.Scene {
     generateBaseTexture(this)
     generatePlanetTexture(this)
     generateAutoMinerTexture(this)
+    generateCargoNetTexture(this)
+    this.tetherGfx = this.add.graphics()
     this.spawnPlanet()
 
     const save = GameSaveService.load()
@@ -177,7 +191,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.asteroidId = snap.asteroidId
       miner.spareNetCount = snap.spareNetCount
       miner.activeNetFill = snap.activeNetFill
-      miner.tetheredNets = [...snap.tetheredNets]
+      miner.tetheredNetIds = [...snap.tetheredNetIds]
 
       if (snap.asteroidId !== null) {
         const asteroid = this.asteroidMap.get(snap.asteroidId)
@@ -193,6 +207,29 @@ export class SpaceScene extends Phaser.Scene {
 
       this.autoMiners.push(miner)
       this.autoMinerMap.set(miner.id, miner)
+      this.attachMinerEvents(miner)
+    }
+
+    // Restore CargoNets (only full-tethered nets are persisted)
+    for (const snap of save.cargoNets) {
+      const net = new CargoNet(
+        this,
+        snap.resourceType as import('../world/worldConfig').ResourceType,
+        snap.quantity,
+        snap.asteroidId,
+        snap.id,
+      )
+      net.state = snap.state
+      if (snap.asteroidId) {
+        const asteroid = this.asteroidMap.get(snap.asteroidId)
+        if (asteroid) {
+          const siblingCount = this.cargoNets.filter(n => n.asteroidId === snap.asteroidId).length
+          const angle = (siblingCount / 4) * Math.PI * 2
+          net.setPosition(asteroid.x + Math.cos(angle) * 18, asteroid.y + Math.sin(angle) * 18)
+        }
+      }
+      this.cargoNets.push(net)
+      this.cargoNetMap.set(net.id, net)
     }
 
     // Restore ships
@@ -222,13 +259,20 @@ export class SpaceScene extends Phaser.Scene {
 
       this.ships.push(ship)
       this.base.registerShip(ship.id)
-      this.attachShipInput(ship)
+      this.attachShipEvents(ship)
+    }
+
+    // Rescue any ship stuck in collecting-nets (in-flight nets are not persisted)
+    for (const ship of this.ships) {
+      if (ship.shipState === 'collecting-nets') {
+        ship.departForBase()
+      }
     }
   }
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 6,
+      schemaVersion: 7,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -269,8 +313,17 @@ export class SpaceScene extends Phaser.Scene {
         technologyLevel: m.technologyLevel,
         spareNetCount: m.spareNetCount,
         activeNetFill: m.activeNetFill,
-        tetheredNets: [...m.tetheredNets],
+        tetheredNetIds: [...m.tetheredNetIds],
       })),
+      cargoNets: this.cargoNets
+        .filter(n => n.state === 'full-tethered')
+        .map(n => ({
+          id: n.id,
+          state: n.state,
+          resourceType: n.resourceType,
+          quantity: n.quantity,
+          asteroidId: n.asteroidId,
+        })),
     }
   }
 
@@ -322,6 +375,7 @@ export class SpaceScene extends Phaser.Scene {
     const miner = new AutoMiner(this)
     this.autoMiners.push(miner)
     this.autoMinerMap.set(miner.id, miner)
+    this.attachMinerEvents(miner)
     const mediumSlot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
     if (mediumSlot) {
       mediumSlot.payload = { kind: 'auto-miner', minerId: miner.id }
@@ -329,7 +383,7 @@ export class SpaceScene extends Phaser.Scene {
 
     this.ships.push(ship)
     this.base.registerShip(ship.id)
-    this.attachShipInput(ship)
+    this.attachShipEvents(ship)
   }
 
   private attachShipInput(ship: Ship): void {
@@ -337,6 +391,106 @@ export class SpaceScene extends Phaser.Scene {
       if (!pointer.leftButtonDown()) return
       this.selectShip(ship)
     })
+  }
+
+  private attachShipEvents(ship: Ship): void {
+    this.attachShipInput(ship)
+    ship.on('begin-unloading', () => this.processNetUnloading(ship))
+  }
+
+  private attachMinerEvents(miner: AutoMiner): void {
+    miner.on('net-ejected', (net: CargoNet) => {
+      this.cargoNets.push(net)
+      this.cargoNetMap.set(net.id, net)
+    })
+  }
+
+  private beginCollecting(ship: Ship, miner: AutoMiner): void {
+    const fullNetIds = miner.tetheredNetIds.filter(id => {
+      const net = this.cargoNetMap.get(id)
+      return net?.state === 'full-tethered'
+    })
+
+    const emptyMediumSlots = ship.attachmentPoints.filter(
+      ap => ap.size === 'medium' && ap.payload === null,
+    )
+    const collectCount = Math.min(fullNetIds.length, emptyMediumSlots.length)
+
+    if (collectCount === 0) {
+      ship.departForBase()
+      return
+    }
+
+    // Pre-assign medium slots to prevent double-booking
+    for (let i = 0; i < collectCount; i++) {
+      emptyMediumSlots[i].payload = { kind: 'cargo-net', netId: fullNetIds[i] }
+    }
+
+    ship.beginCollecting()
+
+    let pending = collectCount
+    for (let i = 0; i < collectCount; i++) {
+      const netId = fullNetIds[i]
+      const net = this.cargoNetMap.get(netId)!
+      this.tweens.add({
+        targets: net,
+        x: ship.x,
+        y: ship.y,
+        delay: i * NET_COLLECT_DURATION_MS,
+        duration: NET_COLLECT_DURATION_MS,
+        ease: 'Power2',
+        onComplete: () => {
+          // Apply leakage exactly once at full-tethered → in-transit transition
+          net.quantity = Math.floor(net.quantity * (1 - NET_LEAKAGE_FRACTION))
+          net.state = 'in-transit'
+          net.setVisible(false)
+          miner.tetheredNetIds = miner.tetheredNetIds.filter(id => id !== netId)
+          ship.pushToStore()
+          pending--
+          if (pending === 0) {
+            ship.departForBase()
+          }
+        },
+      })
+    }
+  }
+
+  private processNetUnloading(ship: Ship): void {
+    for (const ap of ship.attachmentPoints) {
+      if (ap.payload?.kind !== 'cargo-net') continue
+      const net = this.cargoNetMap.get(ap.payload.netId)
+      if (net) {
+        this.base.acceptCargo({ [net.resourceType]: net.quantity })
+        this.cargoNetMap.delete(net.id)
+        this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
+        if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
+        net.destroy()
+      }
+      ap.payload = null
+    }
+
+    // Refill NetStore after unload
+    const netStoreSlot = ship.attachmentPoints.find(ap => ap.payload?.kind === 'net-store')
+    if (netStoreSlot?.payload?.kind === 'net-store') {
+      netStoreSlot.payload.currentNets = netStoreSlot.payload.maxNets
+    }
+
+    this.base.pushToStore()
+    ship.pushToStore()
+  }
+
+  private drawTethers(): void {
+    if (!this.tetherGfx) return
+    this.tetherGfx.clear()
+    this.tetherGfx.lineStyle(1, TETHER_LINE_COLOR, TETHER_LINE_ALPHA)
+    for (const miner of this.autoMiners) {
+      for (const netId of miner.tetheredNetIds) {
+        const net = this.cargoNetMap.get(netId)
+        if (net) {
+          this.tetherGfx.lineBetween(miner.x, miner.y, net.x, net.y)
+        }
+      }
+    }
   }
 
   private selectShip(ship: Ship): void {
@@ -362,6 +516,10 @@ export class SpaceScene extends Phaser.Scene {
     if (this.selectedAutoMinerEntity) {
       this.selectedAutoMinerEntity.deselect()
       this.selectedAutoMinerEntity = null
+    }
+    if (this.selectedCargoNetEntity) {
+      this.selectedCargoNetEntity.deselect()
+      this.selectedCargoNetEntity = null
     }
     selectedAsteroid.set(null)
   }
@@ -636,7 +794,7 @@ export class SpaceScene extends Phaser.Scene {
     const ship = new Ship(this, spawnX, spawnY, name, { x: BASE_X, y: BASE_Y }, this.base)
     this.ships.push(ship)
     this.base.registerShip(ship.id)
-    this.attachShipInput(ship)
+    this.attachShipEvents(ship)
   }
 
   private applyShipUpgrade(shipId: string, stat: 'cargo'): void {
@@ -710,33 +868,40 @@ export class SpaceScene extends Phaser.Scene {
 
           const hitShip = targets.some(t => t instanceof Ship)
           if (!hitShip) {
-            const hitAutoMiner = targets.find(t => t instanceof AutoMiner) as AutoMiner | undefined
-            if (hitAutoMiner && hitAutoMiner.state !== 'in-transit') {
+            const hitCargoNet = targets.find(t => t instanceof CargoNet) as CargoNet | undefined
+            if (hitCargoNet) {
               this.clearSelection()
-              this.selectedAutoMinerEntity = hitAutoMiner
-              hitAutoMiner.select()
+              this.selectedCargoNetEntity = hitCargoNet
+              hitCargoNet.select()
             } else {
-              const hitBase = targets.find(t => t instanceof Base)
-              if (hitBase) {
-                selectedAsteroid.set(null)
-                if (this.selectedAutoMinerEntity) {
-                  this.selectedAutoMinerEntity.deselect()
-                  this.selectedAutoMinerEntity = null
-                }
-                basePanelOpen.set(true)
+              const hitAutoMiner = targets.find(t => t instanceof AutoMiner) as AutoMiner | undefined
+              if (hitAutoMiner && hitAutoMiner.state !== 'in-transit') {
+                this.clearSelection()
+                this.selectedAutoMinerEntity = hitAutoMiner
+                hitAutoMiner.select()
               } else {
-                const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
-                if (hitAsteroid) {
-                  if (this.selectedShip && this.shipHasMiner(this.selectedShip)) {
-                    const haulerId = this.selectedShip.id
-                    commandQueue.update(q => [...q, { type: 'deployMiner', haulerId, asteroidId: hitAsteroid.id }])
+                const hitBase = targets.find(t => t instanceof Base)
+                if (hitBase) {
+                  selectedAsteroid.set(null)
+                  if (this.selectedAutoMinerEntity) {
+                    this.selectedAutoMinerEntity.deselect()
+                    this.selectedAutoMinerEntity = null
+                  }
+                  basePanelOpen.set(true)
+                } else {
+                  const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
+                  if (hitAsteroid) {
+                    if (this.selectedShip && this.shipHasMiner(this.selectedShip)) {
+                      const haulerId = this.selectedShip.id
+                      commandQueue.update(q => [...q, { type: 'deployMiner', haulerId, asteroidId: hitAsteroid.id }])
+                    } else {
+                      this.clearSelection()
+                      hitAsteroid.selectSelf()
+                    }
                   } else {
                     this.clearSelection()
-                    hitAsteroid.selectSelf()
+                    basePanelOpen.set(false)
                   }
-                } else {
-                  this.clearSelection()
-                  basePanelOpen.set(false)
                 }
               }
             }
@@ -861,6 +1026,31 @@ export class SpaceScene extends Phaser.Scene {
         }
       }
     }
+
+    // Update tethered net positions to orbit their miner
+    for (const miner of this.autoMiners) {
+      const count = miner.tetheredNetIds.length
+      for (let i = 0; i < count; i++) {
+        const net = this.cargoNetMap.get(miner.tetheredNetIds[i])
+        if (net && net.state === 'full-tethered') {
+          const angle = (i / Math.max(1, count)) * Math.PI * 2
+          net.setPosition(miner.x + Math.cos(angle) * 18, miner.y + Math.sin(angle) * 18)
+        }
+      }
+    }
+
+    // Detect miner in net-starved or standby-beaconing and trigger collection
+    for (const miner of this.autoMiners) {
+      if (miner.state !== 'standby-beaconing' && miner.state !== 'net-starved') continue
+      const waitingShip = this.ships.find(
+        s => s.shipState === 'waiting-at-asteroid' && s.asteroidTarget?.id === miner.asteroidId,
+      )
+      if (waitingShip) {
+        this.beginCollecting(waitingShip, miner)
+      }
+    }
+
+    this.drawTethers()
 
     for (const ship of this.ships) {
       // Keep ship target locked to orbiting asteroid

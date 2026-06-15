@@ -13,7 +13,12 @@ export interface AutoMinerPayload {
   readonly minerId: string
 }
 
-export type AttachmentPayload = NetStorePayload | AutoMinerPayload
+export interface CargoNetPayload {
+  readonly kind: 'cargo-net'
+  readonly netId: string
+}
+
+export type AttachmentPayload = NetStorePayload | AutoMinerPayload | CargoNetPayload
 
 export interface AttachmentPoint {
   readonly id: string

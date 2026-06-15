@@ -1,7 +1,8 @@
 import type { ResourceType, SizeCategory } from '../world/worldConfig'
 import type { ShipState } from './shipStore'
 import type { AttachmentPoint } from './attachmentTypes'
-import type { AutoMinerState, TetheredNetData } from '../entities/AutoMiner'
+import type { AutoMinerState } from '../entities/AutoMiner'
+import type { CargoNetState } from '../entities/CargoNet'
 
 export interface AsteroidSnapshot {
   id: string
@@ -16,6 +17,14 @@ export interface AsteroidSnapshot {
   isCompany: boolean
 }
 
+export interface CargoNetSnapshot {
+  id: string
+  state: CargoNetState
+  resourceType: string
+  quantity: number
+  asteroidId: string | null
+}
+
 export interface AutoMinerSnapshot {
   id: string
   state: AutoMinerState
@@ -23,7 +32,7 @@ export interface AutoMinerSnapshot {
   technologyLevel: number
   spareNetCount: number
   activeNetFill: number
-  tetheredNets: TetheredNetData[]
+  tetheredNetIds: string[]
 }
 
 export interface ShipSnapshot {
@@ -55,6 +64,7 @@ export interface SaveState {
   asteroids: AsteroidSnapshot[]
   ships: ShipSnapshot[]
   autoMiners: AutoMinerSnapshot[]
+  cargoNets: CargoNetSnapshot[]
 }
 
 export const gameState: SaveState = {
@@ -65,4 +75,5 @@ export const gameState: SaveState = {
   asteroids: [],
   ships: [],
   autoMiners: [],
+  cargoNets: [],
 }
