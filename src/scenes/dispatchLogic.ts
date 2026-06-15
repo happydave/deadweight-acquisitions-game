@@ -1,6 +1,7 @@
 import type { AttachmentPoint } from '../state/attachmentTypes'
 
 export interface SlottedShip {
+  readonly id: string
   readonly shipState: string
   readonly x: number
   readonly y: number
@@ -34,6 +35,31 @@ export function selectDispatchTarget<S extends SlottedShip>(
         ? s
         : best
     }, null)
+}
+
+/**
+ * Selects an idle hauler to fulfil a mining designation.
+ * Preference 1: idle ship carrying an in-transit auto-miner on a medium slot.
+ * Preference 2 (only when hasStoredMiner): any idle ship with a free medium slot.
+ * Returns null if no suitable ship exists.
+ */
+export function selectHaulerForDesignation<S extends SlottedShip>(
+  ships: S[],
+  hasStoredMiner: boolean,
+): S | null {
+  const idle = ships.filter(s => s.shipState === 'idle')
+
+  const withMiner = idle.find(s =>
+    s.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner'),
+  )
+  if (withMiner) return withMiner
+
+  if (!hasStoredMiner) return null
+
+  const withFreeSlot = idle.find(s =>
+    s.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload === null),
+  )
+  return withFreeSlot ?? null
 }
 
 /** Returns the nearest asteroid not in occupiedAsteroidIds, or null. */

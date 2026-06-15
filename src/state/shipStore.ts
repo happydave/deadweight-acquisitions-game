@@ -17,6 +17,7 @@ export type ShipState =
   | 'resupplying-miner'
   | 'responding-to-beacon'
   | 'loading-miner'
+  | 'fetching-station-miner'
 
 export interface SelectedShipData {
   id: string

@@ -144,6 +144,11 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
           this.pushToStore()
         })
         break
+      case 'fetching-station-miner':
+        // SpaceScene detects proximity to base and calls handleFetchStationMinerArrival.
+        // This steer handles movement; the callback is a safe fallback that should not fire.
+        this.steerTowardTarget(dt, ARRIVAL_RADIUS, () => this.arriveIdle())
+        break
       case 'entering-hangar':
         this.setVelocity(0, 0)
         break

@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { shipHasFreeMediumSlot, selectDispatchTarget, selectDeployTarget } from './dispatchLogic'
+import { shipHasFreeMediumSlot, selectDispatchTarget, selectDeployTarget, selectHaulerForDesignation } from './dispatchLogic'
 import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
 import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
@@ -146,6 +146,7 @@ export class SpaceScene extends Phaser.Scene {
   private hangarPositions: HangarPosition[] = []
   private hangarOccupants: Array<string | null> = []
   private shipPendingUpgrades: Map<string, 'cargo'> = new Map()
+  private shipPendingDesignationAsteroid: Map<string, string> = new Map()
   private designations: MiningDesignation[] = []
   private beforeUnloadHandler!: () => void
 
@@ -351,6 +352,10 @@ export class SpaceScene extends Phaser.Scene {
         // Hangar service timers are not resumed across sessions; rescue to idle and release slot
         this.releaseHangarSlot(ship)
         ship.shipState = 'idle'
+        ship.pushToStore()
+      } else if (ship.shipState === 'fetching-station-miner') {
+        ship.shipState = 'idle'
+        ship.target = null
         ship.pushToStore()
       } else if (ship.shipState === 'collecting-nets') {
         this.departShipForBase(ship)
@@ -786,6 +791,42 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private autoDispatch(): void {
+    // Fulfil queued mining designations
+    for (const designation of [...this.designations]) {
+      if (designation.status !== 'queued') continue
+      const asteroid = this.asteroidMap.get(designation.asteroidId)
+      if (!asteroid) {
+        this.retireDesignationsForAsteroid(designation.asteroidId)
+        continue
+      }
+      // Skip if a ship is already heading to this asteroid or fetching miner for it
+      const alreadyDispatched =
+        this.ships.some(s => s.asteroidTarget?.id === designation.asteroidId) ||
+        [...this.shipPendingDesignationAsteroid.values()].includes(designation.asteroidId)
+      if (alreadyDispatched) continue
+
+      const hauler = selectHaulerForDesignation(this.ships, this.base.stationMinerIds.length > 0)
+      if (!hauler) continue
+
+      if (!this.claimDesignation(designation.id, hauler.id)) continue
+
+      const hasMiner = hauler.attachmentPoints.some(
+        ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner',
+      )
+
+      if (hasMiner) {
+        hauler.asteroidTarget = asteroid
+        hauler.target = { x: asteroid.x, y: asteroid.y }
+        hauler.shipState = 'traveling-to-asteroid'
+        hauler.pushToStore()
+      } else {
+        this.shipPendingDesignationAsteroid.set(hauler.id, designation.asteroidId)
+        hauler.target = { x: this.base.x, y: this.base.y }
+        hauler.shipState = 'fetching-station-miner'
+        hauler.pushToStore()
+      }
+    }
+
     for (const miner of this.autoMiners) {
       // Free-orbiting miner: use existing beacon-response flow
       if (miner.freeOrbitalRadius !== null && miner.state === 'standby-beaconing') {
@@ -1331,6 +1372,10 @@ export class SpaceScene extends Phaser.Scene {
     miner.setPosition(ship.x, ship.y)
     miner.setVisible(true)
 
+    // Fulfil any designation claimed by this ship
+    const claimedDesig = this.designations.find(d => d.claimedByShipId === ship.id)
+    if (claimedDesig) this.fulfillDesignation(claimedDesig.id)
+
     const destX = asteroid.x
     const destY = asteroid.y - 20
     this.attachRetryCount.set(ship.id, ATTACH_MAX_RETRIES)
@@ -1408,6 +1453,10 @@ export class SpaceScene extends Phaser.Scene {
 
   private handleAttachExhaustion(ship: Ship, miner: AutoMiner, asteroid: Asteroid): void {
     this.attachRetryCount.delete(ship.id)
+
+    // Release any designation claimed by this ship so it can be re-queued
+    const claimedDesig = this.designations.find(d => d.claimedByShipId === ship.id)
+    if (claimedDesig) this.releaseDesignation(claimedDesig.id)
 
     const freeSlot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
     if (freeSlot) {
@@ -1507,6 +1556,64 @@ export class SpaceScene extends Phaser.Scene {
       ship.cargoUpgradeLevel++
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[ship.cargoUpgradeLevel]
     }
+    ship.pushToStore()
+  }
+
+  private handleFetchStationMinerArrival(ship: Ship): void {
+    const asteroidId = this.shipPendingDesignationAsteroid.get(ship.id)
+    this.shipPendingDesignationAsteroid.delete(ship.id)
+
+    const designation = this.designations.find(
+      d => d.claimedByShipId === ship.id,
+    )
+
+    const minerId = this.base.retrieveAutoMiner()
+    if (!minerId || !asteroidId) {
+      // Storage empty or pending asteroid lost — release designation and go idle
+      if (designation) this.releaseDesignation(designation.id)
+      ship.shipState = 'idle'
+      ship.target = null
+      ship.pushToStore()
+      return
+    }
+
+    const miner = this.autoMinerMap.get(minerId)
+    if (!miner) {
+      if (designation) this.releaseDesignation(designation.id)
+      ship.shipState = 'idle'
+      ship.target = null
+      ship.pushToStore()
+      return
+    }
+
+    const freeSlot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+    if (!freeSlot) {
+      // No free slot; put miner back and release designation
+      this.base.storeAutoMiner(minerId)
+      if (designation) this.releaseDesignation(designation.id)
+      ship.shipState = 'idle'
+      ship.target = null
+      ship.pushToStore()
+      return
+    }
+
+    miner.state = 'in-transit'
+    miner.setVisible(false)
+    freeSlot.payload = { kind: 'auto-miner', minerId }
+    miner.pushToStore()
+
+    const asteroid = this.asteroidMap.get(asteroidId)
+    if (!asteroid) {
+      if (designation) this.releaseDesignation(designation.id)
+      ship.shipState = 'idle'
+      ship.target = null
+      ship.pushToStore()
+      return
+    }
+
+    ship.asteroidTarget = asteroid
+    ship.target = { x: asteroid.x, y: asteroid.y }
+    ship.shipState = 'traveling-to-asteroid'
     ship.pushToStore()
   }
 
@@ -1899,13 +2006,20 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'entering-hangar') {
         this.handleHangarEntry(ship)
       }
+      // Detect arrival at base for station-miner fetch
+      if (ship.shipState === 'fetching-station-miner') {
+        const dBase = Phaser.Math.Distance.Between(ship.x, ship.y, this.base.x, this.base.y)
+        if (dBase < PROXIMITY_BASE_RADIUS) {
+          this.handleFetchStationMinerArrival(ship)
+        }
+      }
     }
 
     let idle = 0, active = 0, returning = 0
     for (const ship of this.ships) {
       const s = ship.shipState
       if (s === 'idle' || s === 'moving') idle++
-      else if (s === 'traveling-to-base' || s === 'unloading' || s === 'in-hangar' || s === 'traveling-to-hangar') returning++
+      else if (s === 'traveling-to-base' || s === 'unloading' || s === 'in-hangar' || s === 'traveling-to-hangar' || s === 'fetching-station-miner') returning++
       else active++
     }
     fleetSummary.set({ idle, active, returning })
