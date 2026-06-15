@@ -2,7 +2,7 @@
   import { baseState } from '../state/baseStore'
   import { fleetSummary } from '../state/fleetStore'
   import { commandQueue } from '../state/commandStore'
-  import { autoMinerSummary, activeBeacons, attachNotifications } from '../state/autoMinerStore'
+  import { autoMinerSummary, activeBeacons, attachNotifications, minerAvailability } from '../state/autoMinerStore'
 
   let saveLabel = 'Save'
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -82,6 +82,11 @@
         <span class="hud-val">{$autoMinerSummary.dark}</span>
       </div>
     {/if}
+  {/if}
+  {#if $minerAvailability.shortage}
+    <div class="hud-row hud-section miner-shortage">
+      <span class="shortage-msg">⚠ Miners: {$minerAvailability.available} avail / {$minerAvailability.demanded} needed</span>
+    </div>
   {/if}
   {#each $attachNotifications as notif (notif.id)}
     <div class="hud-row hud-section attach-notif" class:attach-exhausted={notif.exhausted}>
@@ -189,6 +194,16 @@
   .dispatch-btn:hover {
     color: #ffcc88;
     border-color: #ffaa44;
+  }
+
+  .miner-shortage {
+    border-left: 2px solid #ffaa44;
+    padding-left: 4px;
+  }
+
+  .shortage-msg {
+    color: #ffaa44;
+    font-size: 10px;
   }
 
   .attach-notif {

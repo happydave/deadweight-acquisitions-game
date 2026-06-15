@@ -29,7 +29,14 @@ export interface AttachNotification {
   exhausted: boolean
 }
 
+export interface MinerAvailability {
+  available: number
+  demanded: number
+  shortage: boolean
+}
+
 export const selectedAutoMiner = writable<SelectedAutoMinerData | null>(null)
 export const activeBeacons = writable<BeaconData[]>([])
 export const autoMinerSummary = writable<AutoMinerSummary>({ mining: 0, netStarved: 0, beaconing: 0, dark: 0 })
 export const attachNotifications = writable<AttachNotification[]>([])
+export const minerAvailability = writable<MinerAvailability>({ available: 0, demanded: 0, shortage: false })

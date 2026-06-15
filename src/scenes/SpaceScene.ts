@@ -61,6 +61,7 @@ import {
   activeBeacons,
   autoMinerSummary,
   attachNotifications,
+  minerAvailability,
   type BeaconData,
   type AttachNotification,
 } from '../state/autoMinerStore'
@@ -2032,6 +2033,22 @@ export class SpaceScene extends Phaser.Scene {
       else if (miner.state === 'dark') dark++
     }
     autoMinerSummary.set({ mining, netStarved, beaconing, dark })
+
+    // Compute miner availability vs designation demand
+    const idleShipIds = new Set(this.ships.filter(s => s.shipState === 'idle').map(s => s.id))
+    let carried = 0
+    for (const miner of this.autoMiners) {
+      if (miner.state !== 'in-transit') continue
+      const onIdleShip = this.ships.some(
+        s => idleShipIds.has(s.id) &&
+             s.attachmentPoints.some(ap => ap.payload?.kind === 'auto-miner' && ap.payload.minerId === miner.id),
+      )
+      if (onIdleShip) carried++
+    }
+    const stored = this.base.stationMinerIds.length
+    const available = carried + stored
+    const demanded = this.designations.filter(d => d.status === 'queued' || d.status === 'claimed').length
+    minerAvailability.set({ available, demanded, shortage: available < demanded })
 
     if (this.selectedShip && this.selectionRing) {
       this.drawSelectionRing()
