@@ -76,6 +76,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   tetheredNetIds: string[]
   readonly technologyLevel: number
   isSelected: boolean
+  freeOrbitalRadius: number | null = null
+  freeOrbitalAngle: number | null = null
   private beaconTimer: Phaser.Time.TimerEvent | null = null
 
   constructor(scene: Phaser.Scene, id?: string) {

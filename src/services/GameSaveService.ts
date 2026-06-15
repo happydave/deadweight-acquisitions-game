@@ -112,6 +112,18 @@ function migrate(raw: SaveState): SaveState | null {
       // falls through
     }
     case 7:
+      // v7 → v8: add freeOrbitalRadius / freeOrbitalAngle to autoMiners
+      raw = {
+        ...raw,
+        schemaVersion: 8,
+        autoMiners: (raw.autoMiners as unknown as Array<Record<string, unknown>>).map(m => ({
+          ...m,
+          freeOrbitalRadius: null,
+          freeOrbitalAngle: null,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 8:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

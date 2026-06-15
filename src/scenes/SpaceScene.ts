@@ -8,6 +8,7 @@ import {
   COMPANY_ARRIVAL_BASE_INTERVAL,
   COMPANY_ARRIVAL_MIN_INTERVAL,
   COMPANY_ASTEROID_MAX_COUNT,
+  ORBITAL_K,
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
@@ -220,6 +221,14 @@ export class SpaceScene extends Phaser.Scene {
           miner.destroy()
           continue
         }
+      } else if (snap.freeOrbitalRadius !== null && snap.freeOrbitalAngle !== null) {
+        miner.freeOrbitalRadius = snap.freeOrbitalRadius
+        miner.freeOrbitalAngle = snap.freeOrbitalAngle
+        miner.setPosition(
+          Math.cos(snap.freeOrbitalAngle) * snap.freeOrbitalRadius,
+          Math.sin(snap.freeOrbitalAngle) * snap.freeOrbitalRadius - 20,
+        )
+        miner.setVisible(true)
       }
 
       this.autoMiners.push(miner)
@@ -247,6 +256,18 @@ export class SpaceScene extends Phaser.Scene {
       }
       this.cargoNets.push(net)
       this.cargoNetMap.set(net.id, net)
+    }
+
+    // Reposition nets belonging to free-orbiting miners (their asteroid is no longer in scene)
+    for (const net of this.cargoNets) {
+      const owningMiner = this.autoMiners.find(m => m.tetheredNetIds.includes(net.id))
+      if (owningMiner && owningMiner.freeOrbitalRadius !== null) {
+        const idx = owningMiner.tetheredNetIds.indexOf(net.id)
+        const count = owningMiner.tetheredNetIds.length
+        const angle = (idx / Math.max(1, count)) * Math.PI * 2
+        net.setPosition(owningMiner.x + Math.cos(angle) * 18, owningMiner.y + Math.sin(angle) * 18)
+        net.setVisible(true)
+      }
     }
 
     // Restore ships
@@ -336,7 +357,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 7,
+      schemaVersion: 8,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -374,6 +395,8 @@ export class SpaceScene extends Phaser.Scene {
         id: m.id,
         state: m.state,
         asteroidId: m.asteroidId,
+        freeOrbitalRadius: m.freeOrbitalRadius,
+        freeOrbitalAngle: m.freeOrbitalAngle,
         technologyLevel: m.technologyLevel,
         spareNetCount: m.spareNetCount,
         activeNetFill: m.activeNetFill,
@@ -480,7 +503,9 @@ export class SpaceScene extends Phaser.Scene {
     })
   }
 
-  private beginCollecting(ship: Ship, miner: AutoMiner): void {
+  private beginCollecting(ship: Ship, miner: AutoMiner, onComplete?: () => void): void {
+    const complete = onComplete ?? (() => ship.departForBase())
+
     const fullNetIds = miner.tetheredNetIds.filter(id => {
       const net = this.cargoNetMap.get(id)
       return net?.state === 'full-tethered'
@@ -492,7 +517,7 @@ export class SpaceScene extends Phaser.Scene {
     const collectCount = Math.min(fullNetIds.length, emptyMediumSlots.length)
 
     if (collectCount === 0) {
-      ship.departForBase()
+      complete()
       return
     }
 
@@ -523,7 +548,7 @@ export class SpaceScene extends Phaser.Scene {
           ship.pushToStore()
           pending--
           if (pending === 0) {
-            ship.departForBase()
+            complete()
           }
         },
       })
@@ -893,6 +918,54 @@ export class SpaceScene extends Phaser.Scene {
     this.shipMinerRecoveryTargets.set(nearestIdle.id, miner.id)
   }
 
+  private handleLoadingMiner(ship: Ship): void {
+    const minerId = this.shipMinerRecoveryTargets.get(ship.id)
+    const miner = minerId ? this.autoMinerMap.get(minerId) : null
+
+    if (miner) {
+      const fullNetIds = miner.tetheredNetIds.filter(
+        id => this.cargoNetMap.get(id)?.state === 'full-tethered',
+      )
+      if (fullNetIds.length > 0) {
+        this.beginCollecting(ship, miner, () => this.performRecovery(ship))
+        return
+      }
+    }
+
+    this.performRecovery(ship)
+  }
+
+  private removeDepletedAsteroid(asteroid: Asteroid, miner: AutoMiner): void {
+    // Handle any ship already waiting at this asteroid before clearing asteroidId
+    const waitingShip = this.ships.find(
+      s => s.shipState === 'waiting-at-asteroid' && s.asteroidTarget?.id === asteroid.id,
+    )
+    if (waitingShip) {
+      waitingShip.asteroidTarget = null
+      this.beginCollecting(waitingShip, miner)
+    }
+
+    // Detach miner into free orbit using asteroid's current orbital parameters
+    miner.freeOrbitalRadius = asteroid.orbitalRadius
+    miner.freeOrbitalAngle = asteroid.orbitalAngle
+    miner.asteroidId = null
+
+    // Cancel ships traveling to this asteroid
+    for (const ship of this.ships) {
+      if (ship.asteroidTarget?.id === asteroid.id && ship.shipState === 'traveling-to-asteroid') {
+        ship.asteroidTarget = null
+        ship.shipState = 'idle'
+        ship.target = null
+        ship.pushToStore()
+      }
+    }
+
+    // Remove asteroid from scene
+    this.asteroids = this.asteroids.filter(a => a.id !== asteroid.id)
+    this.asteroidMap.delete(asteroid.id)
+    asteroid.destroy()
+  }
+
   private performRecovery(ship: Ship): void {
     const minerId = this.shipMinerRecoveryTargets.get(ship.id)
     this.shipMinerRecoveryTargets.delete(ship.id)
@@ -904,6 +977,8 @@ export class SpaceScene extends Phaser.Scene {
     }
     const miner = this.autoMinerMap.get(minerId)
     if (miner) {
+      miner.freeOrbitalRadius = null
+      miner.freeOrbitalAngle = null
       miner.state = 'in-transit'
       miner.setVisible(false)
       miner.stopBeacon()
@@ -1337,13 +1412,27 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    // Run AutoMiner mining tick
+    // Run AutoMiner mining tick; detect asteroid depletion
     for (const miner of this.autoMiners) {
       if (miner.state === 'mining' && miner.asteroidId) {
         const asteroid = this.asteroidMap.get(miner.asteroidId)
         if (asteroid) {
           miner.updateMining(dt, asteroid)
+          if (asteroid.currentQuantity <= 0 && this.asteroidMap.has(asteroid.id)) {
+            this.removeDepletedAsteroid(asteroid, miner)
+          }
         }
+      }
+    }
+
+    // Update free-orbiting miner positions (asteroid depleted, miner detached)
+    for (const miner of this.autoMiners) {
+      if (miner.freeOrbitalRadius !== null && miner.freeOrbitalAngle !== null) {
+        miner.freeOrbitalAngle += (ORBITAL_K / Math.max(miner.freeOrbitalRadius, 1) ** 1.5) * dt
+        miner.setPosition(
+          Math.cos(miner.freeOrbitalAngle) * miner.freeOrbitalRadius,
+          Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
+        )
       }
     }
 
@@ -1389,7 +1478,8 @@ export class SpaceScene extends Phaser.Scene {
       }
       // Keep ship docked to orbiting asteroid while stationary at asteroid
       if (
-        ship.asteroidTarget && (
+        ship.asteroidTarget &&
+        this.asteroidMap.has(ship.asteroidTarget.id) && (
           ship.shipState === 'waiting-at-asteroid' ||
           ship.shipState === 'collecting-nets' ||
           ship.shipState === 'resupplying-miner'
@@ -1413,7 +1503,7 @@ export class SpaceScene extends Phaser.Scene {
       }
       // Detect arrival: steerTowardTarget transitioned to loading-miner
       if (ship.shipState === 'loading-miner') {
-        this.performRecovery(ship)
+        this.handleLoadingMiner(ship)
       }
     }
 

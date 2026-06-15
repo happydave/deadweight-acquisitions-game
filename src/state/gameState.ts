@@ -29,6 +29,8 @@ export interface AutoMinerSnapshot {
   id: string
   state: AutoMinerState
   asteroidId: string | null
+  freeOrbitalRadius: number | null
+  freeOrbitalAngle: number | null
   technologyLevel: number
   spareNetCount: number
   activeNetFill: number
