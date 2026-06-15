@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
 import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
 import {
@@ -28,6 +29,10 @@ import {
   MINER_DEPLOY_DURATION_MS,
   MINER_DEPLOY_PROXIMITY,
   RESUPPLY_DURATION_MS,
+  ATTACH_FAILURE_PROB,
+  ATTACH_MAX_RETRIES,
+  ATTACH_DRIFT_DURATION_MS,
+  ATTACH_RETRY_DELAY_MS,
   type AutoMinerState,
 } from '../entities/AutoMiner'
 import {
@@ -43,9 +48,16 @@ import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
 import { basePanelOpen } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
-import { activeBeacons, autoMinerSummary, type BeaconData } from '../state/autoMinerStore'
+import {
+  activeBeacons,
+  autoMinerSummary,
+  attachNotifications,
+  type BeaconData,
+  type AttachNotification,
+} from '../state/autoMinerStore'
 import { GameSaveService } from '../services/GameSaveService'
 
+const NOTIFICATION_DURATION_MS = 4000
 const WORLD_SIZE = 8500
 const MAX_ZOOM = 2
 const PAN_SPEED = 500 // world units per second
@@ -95,6 +107,7 @@ export class SpaceScene extends Phaser.Scene {
   private cargoNets: CargoNet[] = []
   private cargoNetMap: Map<string, CargoNet> = new Map()
   private shipMinerRecoveryTargets: Map<string, string> = new Map()
+  private attachRetryCount: Map<string, number> = new Map()
   private base!: Base
   private selectedShip: Ship | null = null
   private selectedAutoMinerEntity: AutoMiner | null = null
@@ -300,6 +313,13 @@ export class SpaceScene extends Phaser.Scene {
             ap.payload = null
           }
         }
+      }
+    }
+
+    // Rescue drifting miners: treat as standby-beaconing (retry is lost but miner is recoverable)
+    for (const miner of this.autoMiners) {
+      if (miner.state === 'drifting') {
+        miner.state = 'standby-beaconing'
       }
     }
 
@@ -922,6 +942,7 @@ export class SpaceScene extends Phaser.Scene {
 
     const destX = asteroid.x
     const destY = asteroid.y - 20
+    this.attachRetryCount.set(ship.id, ATTACH_MAX_RETRIES)
     this.tweens.add({
       targets: miner,
       x: destX,
@@ -930,18 +951,99 @@ export class SpaceScene extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => {
         miner.state = 'attaching'
-        // Attach always succeeds in WI 406
-        if (asteroid.currentQuantity <= 0) {
-          miner.state = 'standby-beaconing'
-        } else {
-          miner.state = 'mining'
-        }
         miner.pushToStore()
+        this.beginAttachAttempt(ship, miner, asteroid)
       },
     })
 
     ship.shipState = 'waiting-at-asteroid'
     ship.pushToStore()
+  }
+
+  private beginAttachAttempt(ship: Ship, miner: AutoMiner, asteroid: Asteroid): void {
+    if (!miner.active || ship.shipState !== 'waiting-at-asteroid') {
+      this.attachRetryCount.delete(ship.id)
+      return
+    }
+
+    if (asteroid.currentQuantity <= 0) {
+      miner.state = 'standby-beaconing'
+      miner.startBeacon()
+      miner.pushToStore()
+      this.attachRetryCount.delete(ship.id)
+      return
+    }
+
+    if (Math.random() >= ATTACH_FAILURE_PROB) {
+      miner.state = 'mining'
+      miner.pushToStore()
+      this.attachRetryCount.delete(ship.id)
+      return
+    }
+
+    miner.state = 'drifting'
+    miner.pushToStore()
+
+    const remaining = (this.attachRetryCount.get(ship.id) ?? 1) - 1
+    this.attachRetryCount.set(ship.id, remaining)
+
+    const attemptNum = ATTACH_MAX_RETRIES - remaining
+    this.pushAttachNotification(
+      `Miner attach failed (attempt ${attemptNum}/${ATTACH_MAX_RETRIES})${remaining > 0 ? ' — retrying' : ''}`,
+      false,
+    )
+
+    this.tweens.add({
+      targets: miner,
+      x: miner.x + 25,
+      y: miner.y + 15,
+      duration: ATTACH_DRIFT_DURATION_MS,
+      ease: 'Power1',
+    })
+
+    if (remaining > 0) {
+      this.time.delayedCall(ATTACH_RETRY_DELAY_MS, () => {
+        miner.setPosition(asteroid.x, asteroid.y - 20)
+        miner.state = 'attaching'
+        miner.pushToStore()
+        this.beginAttachAttempt(ship, miner, asteroid)
+      })
+    } else {
+      this.time.delayedCall(ATTACH_RETRY_DELAY_MS, () => {
+        this.handleAttachExhaustion(ship, miner, asteroid)
+      })
+    }
+  }
+
+  private handleAttachExhaustion(ship: Ship, miner: AutoMiner, asteroid: Asteroid): void {
+    this.attachRetryCount.delete(ship.id)
+
+    const freeSlot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+    if (freeSlot) {
+      freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
+      miner.state = 'in-transit'
+      miner.setVisible(false)
+    } else {
+      console.warn(`handleAttachExhaustion: no free medium slot on ship ${ship.id}, miner ${miner.id} falls back to beaconing`)
+      miner.state = 'standby-beaconing'
+      miner.startBeacon()
+    }
+
+    miner.pushToStore()
+    ship.pushToStore()
+
+    this.pushAttachNotification(
+      `Miner attach exhausted — ${asteroid.resourceType} asteroid ${miner.asteroidId ?? ''}`,
+      true,
+    )
+  }
+
+  private pushAttachNotification(message: string, exhausted: boolean): void {
+    const entry: AttachNotification = { id: nanoid(), message, exhausted }
+    attachNotifications.update(ns => [...ns, entry])
+    this.time.delayedCall(NOTIFICATION_DURATION_MS, () => {
+      attachNotifications.update(ns => ns.filter(n => n.id !== entry.id))
+    })
   }
 
   private commissionNewShip(): void {
@@ -1165,7 +1267,9 @@ export class SpaceScene extends Phaser.Scene {
       asteroid.updateOrbit(dt)
     }
 
-    // Update deployed miner positions to follow their asteroid
+    // Update deployed miner positions to follow their asteroid.
+    // Only include states where the miner should track its asteroid per-frame.
+    // Do NOT include 'drifting' or other states that manage their own position via tweens.
     const deployedStates = new Set<AutoMinerState>([
       'attaching', 'mining', 'ejecting-net', 'net-starved', 'standby-beaconing', 'dark',
     ])

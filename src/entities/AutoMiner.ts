@@ -13,6 +13,7 @@ export type AutoMinerState =
   | 'ejecting-net'
   | 'net-starved'
   | 'standby-beaconing'
+  | 'drifting'
   | 'dark'
 
 export const MINER_RATE = 5               // resource units per second
@@ -22,6 +23,10 @@ export const MINER_DEPLOY_DURATION_MS = 2000
 export const MINER_DEPLOY_PROXIMITY = 80  // world units; Hauler arrival threshold
 export const RESUPPLY_DURATION_MS = 1500
 export const BEACON_INTERVAL_MS = 3000
+export const ATTACH_FAILURE_PROB = 0.25
+export const ATTACH_MAX_RETRIES = 3
+export const ATTACH_DRIFT_DURATION_MS = 800
+export const ATTACH_RETRY_DELAY_MS = 1800
 export const MINER_TEXTURE_KEY = 'autominer'
 
 export function generateAutoMinerTexture(scene: Phaser.Scene): void {

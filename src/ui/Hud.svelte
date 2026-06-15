@@ -2,7 +2,7 @@
   import { baseState } from '../state/baseStore'
   import { fleetSummary } from '../state/fleetStore'
   import { commandQueue } from '../state/commandStore'
-  import { autoMinerSummary, activeBeacons } from '../state/autoMinerStore'
+  import { autoMinerSummary, activeBeacons, attachNotifications } from '../state/autoMinerStore'
 
   let saveLabel = 'Save'
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -83,6 +83,11 @@
       </div>
     {/if}
   {/if}
+  {#each $attachNotifications as notif (notif.id)}
+    <div class="hud-row hud-section attach-notif" class:attach-exhausted={notif.exhausted}>
+      <span class="notif-msg">{notif.message}</span>
+    </div>
+  {/each}
   {#each $activeBeacons as beacon (beacon.id)}
     <div class="hud-row hud-section beacon-alert">
       <span class="hud-key miner-beaconing">Beacon</span>
@@ -184,5 +189,23 @@
   .dispatch-btn:hover {
     color: #ffcc88;
     border-color: #ffaa44;
+  }
+
+  .attach-notif {
+    border-left: 2px solid #cc8844;
+    padding-left: 4px;
+  }
+
+  .attach-exhausted {
+    border-left-color: #cc4444;
+  }
+
+  .notif-msg {
+    color: #cc8844;
+    font-size: 10px;
+  }
+
+  .attach-exhausted .notif-msg {
+    color: #ee6666;
   }
 </style>
