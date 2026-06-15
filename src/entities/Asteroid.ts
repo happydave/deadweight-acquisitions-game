@@ -8,6 +8,7 @@ const COMPANY_RING_RADIUS = ASTEROID_TEXTURE_SIZE * 1.2  // slightly larger than
 const COMPANY_RING_COLOR = 0x44ffdd
 const COMPANY_RING_ALPHA = 0.85
 const COMPANY_RING_WIDTH = 1.5
+const DEPLETION_SCALE_MIN = 0.2
 
 export class Asteroid extends Phaser.GameObjects.Image {
   readonly id: string
@@ -16,6 +17,7 @@ export class Asteroid extends Phaser.GameObjects.Image {
   readonly maxQuantity: number
   readonly sizeCategory: SizeCategory
   readonly isCompany: boolean
+  private readonly baseScale: number
   private companyRing: Phaser.GameObjects.Graphics | null = null
 
   constructor(scene: Phaser.Scene, data: AsteroidData) {
@@ -26,7 +28,9 @@ export class Asteroid extends Phaser.GameObjects.Image {
     this.maxQuantity = data.maxQuantity
     this.sizeCategory = data.sizeCategory
     this.isCompany = data.isCompany
-    this.setScale(SIZE_CONFIGS[data.sizeCategory].scale)
+    this.baseScale = SIZE_CONFIGS[data.sizeCategory].scale
+    const depletionRatio = data.maxQuantity > 0 ? data.currentQuantity / data.maxQuantity : 1
+    this.setScale(this.baseScale * Math.max(DEPLETION_SCALE_MIN, depletionRatio))
     scene.add.existing(this)
     this.setInteractive()
 
@@ -47,6 +51,9 @@ export class Asteroid extends Phaser.GameObjects.Image {
   }
 
   pushToStore(): void {
+    const ratio = this.maxQuantity > 0 ? this.currentQuantity / this.maxQuantity : 0
+    this.setScale(this.baseScale * Math.max(DEPLETION_SCALE_MIN, ratio))
+
     const current = get(selectedAsteroid)
     if (current?.id !== this.id) return
     selectedAsteroid.set({
@@ -69,6 +76,9 @@ export class Asteroid extends Phaser.GameObjects.Image {
   }
 
   destroy(fromScene?: boolean): void {
+    if (get(selectedAsteroid)?.id === this.id) {
+      selectedAsteroid.set(null)
+    }
     if (this.companyRing) {
       this.companyRing.destroy()
       this.companyRing = null

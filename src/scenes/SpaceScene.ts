@@ -376,6 +376,18 @@ export class SpaceScene extends Phaser.Scene {
     }
   }
 
+  private removeDepletedAsteroids(): void {
+    const depleted = this.asteroids.filter(a => a.currentQuantity <= 0)
+    if (depleted.length === 0) return
+    for (const asteroid of depleted) {
+      for (const ship of this.ships) {
+        ship.notifyTargetDestroyed(asteroid)
+      }
+      asteroid.destroy()
+    }
+    this.asteroids = this.asteroids.filter(a => a.currentQuantity > 0)
+  }
+
   private companyArrivalInterval(): number {
     const natural = this.asteroids.filter(a => !a.isCompany)
     if (natural.length === 0) return COMPANY_ARRIVAL_MIN_INTERVAL
@@ -663,6 +675,8 @@ export class SpaceScene extends Phaser.Scene {
     for (const ship of this.ships) {
       ship.updateSteering(dt)
     }
+
+    this.removeDepletedAsteroids()
 
     let idle = 0, mining = 0, returning = 0
     for (const ship of this.ships) {

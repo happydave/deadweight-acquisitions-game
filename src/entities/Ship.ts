@@ -233,6 +233,17 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     return Object.values(this.cargoContents).reduce((sum, n) => sum + (n ?? 0), 0)
   }
 
+  notifyTargetDestroyed(asteroid: Asteroid): void {
+    if (this.miningTarget !== asteroid) return
+    this.miningTarget = null
+    if (this.shipState === 'traveling-to-target') {
+      this.target = null
+      this.setVelocity(0, 0)
+      this.shipState = 'idle'
+      this.pushToStore()
+    }
+  }
+
   select(): void {
     this.isSelected = true
     this.pushToStore()
