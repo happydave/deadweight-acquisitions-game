@@ -12,5 +12,8 @@ export type GameCommand =
   | { type: 'purchaseMiner'; haulerId: string }
   | { type: 'collectNets'; haulerId: string; asteroidId: string }
   | { type: 'purchaseMinerSlot' }
+  | { type: 'purchaseOwnedDock' }
+  | { type: 'purchaseHangar' }
+  | { type: 'purchasePressurization' }
 
 export const commandQueue = writable<GameCommand[]>([])

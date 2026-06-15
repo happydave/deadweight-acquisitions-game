@@ -4,6 +4,8 @@ import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
 import { AUTOMINER_PURCHASE_COST } from './AutoMiner'
 import { getPrice } from '../world/pricingSeam'
 import { STATION_MINER_SLOT_CAP } from './AutoMiner'
+import { SERVICE_SLOT_COUNT } from '../world/serviceSlots'
+import { HANGAR_BAY_COUNT } from '../world/hangarBays'
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
@@ -125,6 +127,34 @@ export class Base extends Phaser.GameObjects.Image {
     return id
   }
 
+  purchaseOwnedDock(): boolean {
+    if (this.ownedDockCount >= SERVICE_SLOT_COUNT) return false
+    if (this.credits < getPrice('owned-dock-purchase')) return false
+    this.credits -= getPrice('owned-dock-purchase')
+    this.ownedDockCount++
+    this.pushToStore()
+    return true
+  }
+
+  purchaseHangar(): boolean {
+    if (this.ownedHangarCount >= HANGAR_BAY_COUNT) return false
+    if (this.credits < getPrice('owned-hangar-purchase')) return false
+    this.credits -= getPrice('owned-hangar-purchase')
+    this.ownedHangarCount++
+    this.pushToStore()
+    return true
+  }
+
+  purchasePressurization(): boolean {
+    if (this.hangarPressurized) return false
+    if (this.ownedHangarCount < 1) return false
+    if (this.credits < getPrice('pressurization-upgrade')) return false
+    this.credits -= getPrice('pressurization-upgrade')
+    this.hangarPressurized = true
+    this.pushToStore()
+    return true
+  }
+
   commissionShip(): boolean {
     if (this.credits < SHIP_COMMISSION_COST) return false
     this.credits -= SHIP_COMMISSION_COST
@@ -147,6 +177,9 @@ export class Base extends Phaser.GameObjects.Image {
       fleetSize: this.ships.length,
       stationMinerCount: this.stationMinerIds.length,
       stationMinerSlotCount: this.stationMinerSlotCount,
+      ownedDockCount: this.ownedDockCount,
+      ownedHangarCount: this.ownedHangarCount,
+      hangarPressurized: this.hangarPressurized,
     })
   }
 }

@@ -1062,6 +1062,12 @@ export class SpaceScene extends Phaser.Scene {
       this.initiateCollectNets(cmd.haulerId, cmd.asteroidId)
     } else if (cmd.type === 'purchaseMinerSlot') {
       this.base.purchaseMinerSlot()
+    } else if (cmd.type === 'purchaseOwnedDock') {
+      this.base.purchaseOwnedDock()
+    } else if (cmd.type === 'purchaseHangar') {
+      this.base.purchaseHangar()
+    } else if (cmd.type === 'purchasePressurization') {
+      this.base.purchasePressurization()
     }
   }
 
