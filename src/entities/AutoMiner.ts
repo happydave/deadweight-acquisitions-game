@@ -15,6 +15,7 @@ export type AutoMinerState =
   | 'standby-beaconing'
   | 'drifting'
   | 'dark'
+  | 'station-stored'
 
 export const MINER_RATE = 5               // resource units per second
 export const NET_CAPACITY = 50            // resource units per net
@@ -28,6 +29,7 @@ export const ATTACH_MAX_RETRIES = 3
 export const ATTACH_DRIFT_DURATION_MS = 800
 export const ATTACH_RETRY_DELAY_MS = 1800
 export const AUTOMINER_PURCHASE_COST = 300
+export const STATION_MINER_SLOT_CAP = 6
 export const MINER_TEXTURE_KEY = 'autominer'
 
 export function generateAutoMinerTexture(scene: Phaser.Scene): void {

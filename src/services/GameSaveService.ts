@@ -197,6 +197,18 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 14:
+      // v14 → v15: add stationMinerSlotCount and stationMinerIds to base
+      raw = {
+        ...raw,
+        schemaVersion: 15,
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          stationMinerSlotCount: 0,
+          stationMinerIds: [],
+        },
+      } as unknown as SaveState
+      // falls through
+    case 15:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

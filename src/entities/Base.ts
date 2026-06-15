@@ -3,6 +3,7 @@ import { baseState } from '../state/baseStore'
 import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
 import { AUTOMINER_PURCHASE_COST } from './AutoMiner'
 import { getPrice } from '../world/pricingSeam'
+import { STATION_MINER_SLOT_CAP } from './AutoMiner'
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
@@ -34,6 +35,8 @@ export class Base extends Phaser.GameObjects.Image {
   ownedDockCount: number
   ownedHangarCount: number
   hangarPressurized: boolean
+  stationMinerSlotCount: number
+  stationMinerIds: string[]
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -44,6 +47,8 @@ export class Base extends Phaser.GameObjects.Image {
     this.ownedDockCount = 0
     this.ownedHangarCount = 0
     this.hangarPressurized = false
+    this.stationMinerSlotCount = 0
+    this.stationMinerIds = []
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -97,6 +102,29 @@ export class Base extends Phaser.GameObjects.Image {
     this.pushToStore()
   }
 
+  purchaseMinerSlot(): boolean {
+    if (this.stationMinerSlotCount >= STATION_MINER_SLOT_CAP) return false
+    if (this.credits < getPrice('station-miner-slot')) return false
+    this.credits -= getPrice('station-miner-slot')
+    this.stationMinerSlotCount++
+    this.pushToStore()
+    return true
+  }
+
+  storeAutoMiner(id: string): boolean {
+    if (this.stationMinerIds.length >= this.stationMinerSlotCount) return false
+    this.stationMinerIds.push(id)
+    this.pushToStore()
+    return true
+  }
+
+  retrieveAutoMiner(): string | null {
+    if (this.stationMinerIds.length === 0) return null
+    const id = this.stationMinerIds.shift()!
+    this.pushToStore()
+    return id
+  }
+
   commissionShip(): boolean {
     if (this.credits < SHIP_COMMISSION_COST) return false
     this.credits -= SHIP_COMMISSION_COST
@@ -117,6 +145,8 @@ export class Base extends Phaser.GameObjects.Image {
       storageCapacity: this.storageCapacity,
       credits: this.credits,
       fleetSize: this.ships.length,
+      stationMinerCount: this.stationMinerIds.length,
+      stationMinerSlotCount: this.stationMinerSlotCount,
     })
   }
 }

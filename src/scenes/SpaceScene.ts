@@ -214,6 +214,8 @@ export class SpaceScene extends Phaser.Scene {
     this.base.ownedDockCount = save.base.ownedDockCount ?? 0
     this.base.ownedHangarCount = save.base.ownedHangarCount ?? 0
     this.base.hangarPressurized = save.base.hangarPressurized ?? false
+    this.base.stationMinerSlotCount = save.base.stationMinerSlotCount ?? 0
+    this.base.stationMinerIds = [...(save.base.stationMinerIds ?? [])]
     this.base.pushToStore()
 
     this.add
@@ -403,7 +405,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 14,
+      schemaVersion: 15,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -412,6 +414,8 @@ export class SpaceScene extends Phaser.Scene {
         ownedDockCount: this.base.ownedDockCount,
         ownedHangarCount: this.base.ownedHangarCount,
         hangarPressurized: this.base.hangarPressurized,
+        stationMinerSlotCount: this.base.stationMinerSlotCount,
+        stationMinerIds: [...this.base.stationMinerIds],
       },
       asteroids: this.asteroids.map(a => ({
         id: a.id,
@@ -721,6 +725,13 @@ export class SpaceScene extends Phaser.Scene {
             }
           }
           miner.tetheredNetIds = []
+          // Auto-transfer in-transit miner to station storage if a slot is available
+          if (miner.state === 'in-transit' && this.base.storeAutoMiner(miner.id)) {
+            miner.state = 'station-stored'
+            miner.setVisible(false)
+            ap.payload = null
+            miner.pushToStore()
+          }
         }
       }
     }
@@ -1049,6 +1060,8 @@ export class SpaceScene extends Phaser.Scene {
       this.performPurchaseMiner(cmd.haulerId)
     } else if (cmd.type === 'collectNets') {
       this.initiateCollectNets(cmd.haulerId, cmd.asteroidId)
+    } else if (cmd.type === 'purchaseMinerSlot') {
+      this.base.purchaseMinerSlot()
     }
   }
 

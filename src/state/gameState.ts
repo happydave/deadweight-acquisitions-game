@@ -64,6 +64,8 @@ export interface BaseSnapshot {
   ownedDockCount: number
   ownedHangarCount: number
   hangarPressurized: boolean
+  stationMinerSlotCount: number
+  stationMinerIds: string[]
 }
 
 export interface SaveState {
@@ -81,7 +83,7 @@ export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false },
+  base: { storage: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [] },
   asteroids: [],
   ships: [],
   autoMiners: [],

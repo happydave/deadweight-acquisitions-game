@@ -5,6 +5,7 @@ export type PriceKey =
   | 'hangar-service'
   | 'repair-per-condition-point'
   | 'electricity-per-battery-unit'
+  | 'station-miner-slot'
 
 const PRICES: Record<PriceKey, number> = {
   'dock-refuel':                  20,
@@ -13,6 +14,7 @@ const PRICES: Record<PriceKey, number> = {
   'hangar-service':               50,
   'repair-per-condition-point':    5,
   'electricity-per-battery-unit':  2,
+  'station-miner-slot':          200,
 }
 
 export function getPrice(key: PriceKey): number {

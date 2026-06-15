@@ -6,6 +6,8 @@ export interface BaseState {
   storageCapacity: number
   credits: number
   fleetSize: number
+  stationMinerCount: number
+  stationMinerSlotCount: number
 }
 
 export const baseState = writable<BaseState>({
@@ -13,6 +15,8 @@ export const baseState = writable<BaseState>({
   storageCapacity: 0,
   credits: 0,
   fleetSize: 0,
+  stationMinerCount: 0,
+  stationMinerSlotCount: 0,
 })
 
 export const basePanelOpen = writable<boolean>(false)
