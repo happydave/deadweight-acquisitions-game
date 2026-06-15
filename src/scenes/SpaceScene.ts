@@ -11,6 +11,7 @@ import {
   ORBITAL_K,
   SHIP_PARK_RADIUS,
   SHIP_PARK_ORBIT_RATE,
+  AUTO_DISPATCH_INTERVAL,
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
@@ -175,6 +176,13 @@ export class SpaceScene extends Phaser.Scene {
       GameSaveService.save(this.buildSaveState())
     }
     window.addEventListener('beforeunload', this.beforeUnloadHandler)
+
+    this.time.addEvent({
+      delay: AUTO_DISPATCH_INTERVAL * 1000,
+      callback: this.autoDispatch,
+      callbackScope: this,
+      loop: true,
+    })
   }
 
   shutdown(): void {
@@ -599,6 +607,56 @@ export class SpaceScene extends Phaser.Scene {
     ship.pushToStore()
   }
 
+  private autoDispatch(): void {
+    for (const miner of this.autoMiners) {
+      // Free-orbiting miner: use existing beacon-response flow
+      if (miner.freeOrbitalRadius !== null && miner.state === 'standby-beaconing') {
+        const alreadyDispatched = [...this.shipMinerRecoveryTargets.values()].includes(miner.id)
+        if (!alreadyDispatched) this.initiateRespondToBeacon(miner.id)
+        continue
+      }
+
+      if (!miner.asteroidId) continue
+      const asteroid = this.asteroidMap.get(miner.asteroidId)
+      if (!asteroid) continue
+
+      const shipEnRoute = this.ships.some(s => s.asteroidTarget?.id === miner.asteroidId)
+      if (shipEnRoute) continue
+
+      if (miner.state === 'standby-beaconing') {
+        this.dispatchToAsteroid(asteroid)
+      } else if (miner.state === 'mining' || miner.state === 'ejecting-net') {
+        const fullNets = miner.tetheredNetIds.filter(id => this.cargoNetMap.get(id)?.state === 'full-tethered')
+        if (fullNets.length > 0) this.dispatchToAsteroid(asteroid)
+      }
+    }
+  }
+
+  private dispatchToAsteroid(asteroid: Asteroid): void {
+    const nearest = this.ships
+      .filter(s => s.shipState === 'idle' && s.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload === null))
+      .reduce<Ship | null>((best, s) => {
+        if (!best) return s
+        return Phaser.Math.Distance.Between(s.x, s.y, asteroid.x, asteroid.y) <
+               Phaser.Math.Distance.Between(best.x, best.y, asteroid.x, asteroid.y) ? s : best
+      }, null)
+    if (!nearest) return
+    nearest.asteroidTarget = asteroid
+    nearest.target = { x: asteroid.x, y: asteroid.y }
+    nearest.shipState = 'traveling-to-asteroid'
+    nearest.pushToStore()
+  }
+
+  private performAtAsteroidRecovery(ship: Ship, miner: AutoMiner): void {
+    miner.asteroidId = null
+    miner.state = 'in-transit'
+    miner.setVisible(false)
+    miner.stopBeacon()
+    activeBeacons.update(beacons => beacons.filter(b => b.id !== miner.id))
+    miner.pushToStore()
+    ship.departForBase()
+  }
+
   private drawTethers(): void {
     if (!this.tetherGfx) return
     this.tetherGfx.clear()
@@ -922,6 +980,7 @@ export class SpaceScene extends Phaser.Scene {
     const miner = minerId ? this.autoMinerMap.get(minerId) : null
 
     if (miner) {
+      ship.minerTarget = miner
       const fullNetIds = miner.tetheredNetIds.filter(
         id => this.cargoNetMap.get(id)?.state === 'full-tethered',
       )
@@ -1464,7 +1523,16 @@ export class SpaceScene extends Phaser.Scene {
           this.beginCollecting(waitingShip, miner)
         }
       } else if (miner.state === 'standby-beaconing') {
-        this.beginCollecting(waitingShip, miner)
+        const freeSlot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+        if (freeSlot) {
+          freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
+          this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
+        } else {
+          this.beginCollecting(waitingShip, miner)
+        }
+      } else if (miner.state === 'mining' || miner.state === 'ejecting-net') {
+        const fullNets = miner.tetheredNetIds.filter(id => this.cargoNetMap.get(id)?.state === 'full-tethered')
+        if (fullNets.length > 0) this.beginCollecting(waitingShip, miner)
       }
     }
 
@@ -1492,6 +1560,17 @@ export class SpaceScene extends Phaser.Scene {
         ship.setPosition(
           ast.x + Math.cos(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
           ast.y + Math.sin(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
+        )
+      // Orbit free-orbiting miner while collecting its nets
+      } else if (ship.minerTarget && ship.shipState === 'collecting-nets') {
+        const m = ship.minerTarget
+        if (ship.waitOrbitalAngle === null) {
+          ship.waitOrbitalAngle = Math.atan2(ship.y - m.y, ship.x - m.x)
+        }
+        ship.waitOrbitalAngle += SHIP_PARK_ORBIT_RATE * dt
+        ship.setPosition(
+          m.x + Math.cos(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
+          m.y + Math.sin(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
         )
       }
       // Keep responding-to-beacon target locked to miner's current position

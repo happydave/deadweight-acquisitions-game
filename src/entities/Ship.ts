@@ -4,6 +4,7 @@ import { selectedShip, type ShipState } from '../state/shipStore'
 import type { ResourceType } from '../world/worldConfig'
 import type { Base } from './Base'
 import type { Asteroid } from './Asteroid'
+import type { AutoMiner } from './AutoMiner'
 import { makeDefaultLoadout, type AttachmentPoint } from '../state/attachmentTypes'
 import { MINER_DEPLOY_PROXIMITY } from './AutoMiner'
 
@@ -52,6 +53,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   speedMultiplier = 1.0
   unloadTimer: number
   waitOrbitalAngle: number | null = null
+  minerTarget: AutoMiner | null = null
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   isSelected: boolean
 
@@ -181,6 +183,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.target = { ...this.basePosition }
     this.asteroidTarget = null
     this.waitOrbitalAngle = null
+    this.minerTarget = null
     this.pushToStore()
   }
 

@@ -24,6 +24,7 @@ export const COMPANY_ASTEROID_MAX_COUNT = 12
 export const ORBITAL_K = 500                      // Keplerian constant: ω = K / r^1.5
 export const SHIP_PARK_RADIUS = 35                 // px: orbit radius around asteroid while parked
 export const SHIP_PARK_ORBIT_RATE = 0.4            // rad/s: angular rate of ship orbit around asteroid
+export const AUTO_DISPATCH_INTERVAL = 4            // seconds between auto-dispatch scans
 
 // --- Resource weights ---
 export const MOON_RESOURCE_WEIGHTS: Record<ResourceType, number> = {
