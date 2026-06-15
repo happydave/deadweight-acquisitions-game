@@ -4,6 +4,7 @@
   import { selectedCargoNet } from '../state/cargoNetStore'
   import { commandQueue } from '../state/commandStore'
   import { NET_CAPACITY } from '../entities/AutoMiner'
+  import { designationQueue } from '../state/designationStore'
 
   function cargoTotal(contents: Record<string, number>): number {
     return Object.values(contents).reduce((sum, n) => sum + n, 0)
@@ -110,6 +111,7 @@
     {/each}
   </div>
 {:else if $selectedAsteroid}
+  {@const designation = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id) ?? null}
   <div class="panel">
     <div class="name asteroid-name">{$selectedAsteroid.resourceType}</div>
     <div class="row">
@@ -120,6 +122,21 @@
       <span class="label">Quantity</span>
       <span class="value">{Math.floor($selectedAsteroid.currentQuantity)} / {$selectedAsteroid.maxQuantity}</span>
     </div>
+    {#if designation === null}
+      <button
+        class="action-btn"
+        on:click={() => commandQueue.update(q => [...q, { type: 'designateAsteroid', asteroidId: $selectedAsteroid!.id }])}
+      >Designate for Mining</button>
+    {:else}
+      <div class="row">
+        <span class="label">Status</span>
+        <span class="value desig-{designation.status}">{designation.status}</span>
+      </div>
+      <button
+        class="action-btn action-btn-cancel"
+        on:click={() => commandQueue.update(q => [...q, { type: 'undesignateAsteroid', asteroidId: $selectedAsteroid!.id }])}
+      >Un-designate</button>
+    {/if}
   </div>
 {/if}
 
@@ -284,6 +301,20 @@
   .state-am-ejecting-net           { color: #88ddff; }
   .state-am-net-starved            { color: #ff6644; }
   .state-am-standby-beaconing      { color: #ffaa44; }
+
+  .desig-queued  { color: #88ffaa; }
+  .desig-claimed { color: #ffdd88; }
+
+  .action-btn-cancel {
+    background: rgba(60, 20, 20, 0.8);
+    border-color: #885544;
+    color: #ffaa88;
+  }
+
+  .action-btn-cancel:hover {
+    background: rgba(90, 30, 30, 0.9);
+    border-color: #aa7766;
+  }
 
   .resource-iron         { color: #c07840; }
   .resource-ice          { color: #99ddff; }

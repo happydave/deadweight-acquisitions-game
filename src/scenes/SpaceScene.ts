@@ -1089,6 +1089,10 @@ export class SpaceScene extends Phaser.Scene {
       this.base.purchaseHangar()
     } else if (cmd.type === 'purchasePressurization') {
       this.base.purchasePressurization()
+    } else if (cmd.type === 'designateAsteroid') {
+      this.addDesignation(cmd.asteroidId)
+    } else if (cmd.type === 'undesignateAsteroid') {
+      this.removeDesignation(cmd.asteroidId)
     }
   }
 
@@ -1630,10 +1634,7 @@ export class SpaceScene extends Phaser.Scene {
                 } else {
                   const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
                   if (hitAsteroid) {
-                    if (this.selectedShip && this.shipHasMiner(this.selectedShip)) {
-                      const haulerId = this.selectedShip.id
-                      commandQueue.update(q => [...q, { type: 'deployMiner', haulerId, asteroidId: hitAsteroid.id }])
-                    } else if (
+                    if (
                       this.selectedShip &&
                       this.selectedShip.shipState === 'idle' &&
                       this.asteroidHasTetheredNets(hitAsteroid)

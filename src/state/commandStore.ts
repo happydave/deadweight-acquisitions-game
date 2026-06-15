@@ -15,5 +15,7 @@ export type GameCommand =
   | { type: 'purchaseOwnedDock' }
   | { type: 'purchaseHangar' }
   | { type: 'purchasePressurization' }
+  | { type: 'designateAsteroid'; asteroidId: string }
+  | { type: 'undesignateAsteroid'; asteroidId: string }
 
 export const commandQueue = writable<GameCommand[]>([])
