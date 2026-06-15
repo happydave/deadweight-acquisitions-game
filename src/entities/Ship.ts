@@ -108,6 +108,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         this.steerTowardTarget(dt, ARRIVAL_RADIUS, () => this.arriveIdle())
         break
       case 'traveling-to-target':
+        if (this.miningTarget !== null) {
+          this.target = { x: this.miningTarget.x, y: this.miningTarget.y }
+        }
         this.steerTowardTarget(dt, MINING_PROXIMITY, () => this.beginMining())
         break
       case 'mining':

@@ -21,6 +21,8 @@ export interface AsteroidData {
   id: string
   x: number
   y: number
+  orbitalRadius: number
+  orbitalAngle: number
   resourceType: ResourceType
   sizeCategory: SizeCategory
   currentQuantity: number
@@ -53,6 +55,8 @@ export function generateWorld(seed: number): AsteroidData[] {
       id: nanoid(),
       x,
       y,
+      orbitalRadius: Math.sqrt(x * x + y * y),
+      orbitalAngle: Math.atan2(y, x),
       resourceType,
       sizeCategory,
       currentQuantity: maxQuantity,
@@ -78,6 +82,8 @@ export function generateWorld(seed: number): AsteroidData[] {
       id: nanoid(),
       x,
       y,
+      orbitalRadius: distance,
+      orbitalAngle: angle,
       resourceType,
       sizeCategory,
       currentQuantity: maxQuantity,
@@ -105,6 +111,8 @@ export function generateCompanyAsteroid(seed: number): AsteroidData {
     id: nanoid(),
     x,
     y,
+    orbitalRadius: distance,
+    orbitalAngle: angle,
     resourceType,
     sizeCategory,
     currentQuantity: maxQuantity,

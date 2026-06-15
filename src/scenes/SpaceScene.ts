@@ -197,7 +197,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -208,6 +208,8 @@ export class SpaceScene extends Phaser.Scene {
         id: a.id,
         x: a.x,
         y: a.y,
+        orbitalRadius: a.orbitalRadius,
+        orbitalAngle: a.orbitalAngle,
         resourceType: a.resourceType,
         sizeCategory: a.sizeCategory,
         currentQuantity: a.currentQuantity,
@@ -670,6 +672,10 @@ export class SpaceScene extends Phaser.Scene {
     for (let i = 0; i < this.starLayers.length; i++) {
       this.starLayers[i].tilePositionX = cam.scrollX * STAR_LAYERS[i].parallax
       this.starLayers[i].tilePositionY = cam.scrollY * STAR_LAYERS[i].parallax
+    }
+
+    for (const asteroid of this.asteroids) {
+      asteroid.updateOrbit(dt)
     }
 
     for (const ship of this.ships) {

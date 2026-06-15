@@ -21,6 +21,7 @@ export const COMPANY_DISTANCE_MAX = 2800
 export const COMPANY_ARRIVAL_BASE_INTERVAL = 300  // seconds at full natural resources
 export const COMPANY_ARRIVAL_MIN_INTERVAL = 60    // floor when natural resources exhausted
 export const COMPANY_ASTEROID_MAX_COUNT = 12
+export const ORBITAL_K = 500                      // Keplerian constant: ω = K / r^1.5
 
 // --- Resource weights ---
 export const MOON_RESOURCE_WEIGHTS: Record<ResourceType, number> = {

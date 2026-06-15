@@ -5,6 +5,8 @@ export interface AsteroidSnapshot {
   id: string
   x: number
   y: number
+  orbitalRadius: number
+  orbitalAngle: number
   resourceType: ResourceType
   sizeCategory: SizeCategory
   currentQuantity: number

@@ -29,6 +29,18 @@ function migrate(raw: SaveState): SaveState | null {
       }
       // falls through
     case 3:
+      // v3 → v4: add orbitalRadius and orbitalAngle to every asteroid
+      raw = {
+        ...raw,
+        schemaVersion: 4,
+        asteroids: raw.asteroids.map(a => ({
+          ...a,
+          orbitalRadius: (a as { orbitalRadius?: number }).orbitalRadius ?? Math.sqrt(a.x * a.x + a.y * a.y),
+          orbitalAngle: (a as { orbitalAngle?: number }).orbitalAngle ?? Math.atan2(a.y, a.x),
+        })),
+      }
+      // falls through
+    case 4:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

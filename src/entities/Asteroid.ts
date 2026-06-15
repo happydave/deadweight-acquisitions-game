@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SIZE_CONFIGS, ASTEROID_TEXTURE_SIZE, type ResourceType, type SizeCategory } from '../world/worldConfig'
+import { SIZE_CONFIGS, ASTEROID_TEXTURE_SIZE, ORBITAL_K, type ResourceType, type SizeCategory } from '../world/worldConfig'
 import type { AsteroidData } from '../world/worldGenerator'
 import { selectedAsteroid } from '../state/shipStore'
 import { get } from 'svelte/store'
@@ -17,20 +17,26 @@ export class Asteroid extends Phaser.GameObjects.Image {
   readonly maxQuantity: number
   readonly sizeCategory: SizeCategory
   readonly isCompany: boolean
+  orbitalRadius: number
+  orbitalAngle: number
   private readonly baseScale: number
   private companyRing: Phaser.GameObjects.Graphics | null = null
 
   constructor(scene: Phaser.Scene, data: AsteroidData) {
-    super(scene, data.x, data.y, `asteroid-${data.resourceType}`)
+    super(scene, 0, 0, `asteroid-${data.resourceType}`)
     this.id = data.id
     this.resourceType = data.resourceType
     this.currentQuantity = data.currentQuantity
     this.maxQuantity = data.maxQuantity
     this.sizeCategory = data.sizeCategory
     this.isCompany = data.isCompany
+    this.orbitalRadius = data.orbitalRadius
+    this.orbitalAngle = data.orbitalAngle
     this.baseScale = SIZE_CONFIGS[data.sizeCategory].scale
     const depletionRatio = data.maxQuantity > 0 ? data.currentQuantity / data.maxQuantity : 1
     this.setScale(this.baseScale * Math.max(DEPLETION_SCALE_MIN, depletionRatio))
+    this.x = Math.cos(this.orbitalAngle) * this.orbitalRadius
+    this.y = Math.sin(this.orbitalAngle) * this.orbitalRadius
     scene.add.existing(this)
     this.setInteractive()
 
@@ -47,6 +53,17 @@ export class Asteroid extends Phaser.GameObjects.Image {
         repeat: -1,
         ease: 'Sine.easeInOut',
       })
+    }
+  }
+
+  updateOrbit(dt: number): void {
+    this.orbitalAngle += (ORBITAL_K / Math.max(this.orbitalRadius, 1) ** 1.5) * dt
+    this.x = Math.cos(this.orbitalAngle) * this.orbitalRadius
+    this.y = Math.sin(this.orbitalAngle) * this.orbitalRadius
+    if (this.companyRing) {
+      this.companyRing.clear()
+      this.companyRing.lineStyle(COMPANY_RING_WIDTH, COMPANY_RING_COLOR, COMPANY_RING_ALPHA)
+      this.companyRing.strokeCircle(this.x, this.y, COMPANY_RING_RADIUS)
     }
   }
 
