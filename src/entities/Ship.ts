@@ -13,6 +13,10 @@ export const MINING_PROXIMITY = 60     // world units — arrival threshold for 
 export const DRAG_ORDER_THRESHOLD = 5  // screen pixels
 export const UNLOAD_DURATION = 3       // seconds
 
+export const UNLOAD_BAR_WIDTH = 32
+export const UNLOAD_BAR_HEIGHT = 4
+export const UNLOAD_BAR_Y_OFFSET = 18
+
 export const MAX_UPGRADE_LEVEL = 3
 export const CARGO_CAPACITY_TIERS = [200, 350, 550, 800] as const
 export const MINING_RATE_TIERS    = [10,  15,  22,  32]  as const
@@ -51,6 +55,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   speedMultiplier = 1.0
   unloadTimer: number
   private miningOffset: { x: number; y: number } | null = null
+  private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   isSelected: boolean
 
   constructor(
@@ -223,10 +228,23 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.shipState = 'unloading'
     this.unloadTimer = 0
     this.target = null
+    this.progressBarGfx = this.scene.add.graphics()
+    this.progressBarGfx.setDepth(this.depth + 1)
     this.pushToStore()
   }
 
   private updateUnloading(dt: number): void {
+    if (this.progressBarGfx !== null) {
+      const fill = Math.min(this.unloadTimer / UNLOAD_DURATION, 1)
+      const barX = this.x - UNLOAD_BAR_WIDTH / 2
+      const barY = this.y - UNLOAD_BAR_Y_OFFSET
+      this.progressBarGfx.clear()
+      this.progressBarGfx.fillStyle(0x222222, 0.7)
+      this.progressBarGfx.fillRect(barX, barY, UNLOAD_BAR_WIDTH, UNLOAD_BAR_HEIGHT)
+      this.progressBarGfx.fillStyle(0x88ccff, 1)
+      this.progressBarGfx.fillRect(barX, barY, UNLOAD_BAR_WIDTH * fill, UNLOAD_BAR_HEIGHT)
+    }
+
     if (!this.base.canAcceptCargo(this.cargoContents)) return
 
     this.unloadTimer += dt
@@ -237,11 +255,20 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.unloadTimer = 0
 
     if (this.autoCycle && this.miningTarget !== null && this.miningTarget.currentQuantity > 0) {
+      this.destroyProgressBar()
       this.issueMineOrder(this.miningTarget)
     } else {
       this.miningTarget = null
+      this.destroyProgressBar()
       this.shipState = 'idle'
       this.pushToStore()
+    }
+  }
+
+  private destroyProgressBar(): void {
+    if (this.progressBarGfx !== null) {
+      this.progressBarGfx.destroy()
+      this.progressBarGfx = null
     }
   }
 
