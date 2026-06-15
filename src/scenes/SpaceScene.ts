@@ -545,6 +545,17 @@ export class SpaceScene extends Phaser.Scene {
       } else if (ap.payload?.kind === 'auto-miner') {
         const miner = this.autoMinerMap.get(ap.payload.minerId)
         if (miner) {
+          for (const netId of miner.tetheredNetIds) {
+            const net = this.cargoNetMap.get(netId)
+            if (net) {
+              this.base.acceptCargo({ [net.resourceType]: net.quantity })
+              this.cargoNetMap.delete(net.id)
+              this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
+              if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
+              net.destroy()
+            }
+          }
+          miner.tetheredNetIds = []
           if (this.selectedAutoMinerEntity === miner) this.selectedAutoMinerEntity = null
           this.autoMiners = this.autoMiners.filter(m => m.id !== miner.id)
           this.autoMinerMap.delete(miner.id)
@@ -786,6 +797,8 @@ export class SpaceScene extends Phaser.Scene {
       this.initiateRespondToBeacon(cmd.minerId)
     } else if (cmd.type === 'purchaseMiner') {
       this.performPurchaseMiner(cmd.haulerId)
+    } else if (cmd.type === 'collectNets') {
+      this.initiateCollectNets(cmd.haulerId, cmd.asteroidId)
     }
   }
 
@@ -799,6 +812,21 @@ export class SpaceScene extends Phaser.Scene {
     ship.target = { x: asteroid.x, y: asteroid.y }
     ship.shipState = 'traveling-to-asteroid'
     ship.pushToStore()
+  }
+
+  private initiateCollectNets(haulerId: string, asteroidId: string): void {
+    const ship = this.ships.find(s => s.id === haulerId)
+    const asteroid = this.asteroidMap.get(asteroidId)
+    if (!ship || !asteroid || ship.shipState !== 'idle') return
+
+    ship.asteroidTarget = asteroid
+    ship.target = { x: asteroid.x, y: asteroid.y }
+    ship.shipState = 'traveling-to-asteroid'
+    ship.pushToStore()
+  }
+
+  private asteroidHasTetheredNets(asteroid: Asteroid): boolean {
+    return this.autoMiners.some(m => m.asteroidId === asteroid.id && m.tetheredNetIds.length > 0)
   }
 
   private initiateResupplyMiner(minerId: string): void {
@@ -1177,6 +1205,13 @@ export class SpaceScene extends Phaser.Scene {
                     if (this.selectedShip && this.shipHasMiner(this.selectedShip)) {
                       const haulerId = this.selectedShip.id
                       commandQueue.update(q => [...q, { type: 'deployMiner', haulerId, asteroidId: hitAsteroid.id }])
+                    } else if (
+                      this.selectedShip &&
+                      this.selectedShip.shipState === 'idle' &&
+                      this.asteroidHasTetheredNets(hitAsteroid)
+                    ) {
+                      const haulerId = this.selectedShip.id
+                      commandQueue.update(q => [...q, { type: 'collectNets', haulerId, asteroidId: hitAsteroid.id }])
                     } else {
                       this.clearSelection()
                       hitAsteroid.selectSelf()
