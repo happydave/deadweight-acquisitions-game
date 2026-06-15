@@ -2,6 +2,7 @@
   import { selectedShip, selectedAsteroid } from '../state/shipStore'
   import { selectedAutoMiner } from '../state/autoMinerStore'
   import { selectedCargoNet } from '../state/cargoNetStore'
+  import { commandQueue } from '../state/commandStore'
   import { NET_CAPACITY } from '../entities/AutoMiner'
 
   function cargoTotal(contents: Record<string, number>): number {
@@ -59,6 +60,12 @@
       <span class="label">Tethered</span>
       <span class="value">{$selectedAutoMiner.tetheredNetCount}</span>
     </div>
+    {#if $selectedAutoMiner.state === 'net-starved'}
+      <button
+        class="action-btn"
+        on:click={() => commandQueue.update(q => [...q, { type: 'resupplyMiner', minerId: $selectedAutoMiner!.id }])}
+      >Resupply</button>
+    {/if}
   </div>
 {:else if $selectedShip}
   <div class="panel">
@@ -202,8 +209,29 @@
   .state-cn-in-transit    { color: #ffdd88; }
   .state-cn-unloading     { color: #44aaff; }
 
-  .payload-net-store  { color: #88ddaa; }
-  .payload-auto-miner { color: #88ccdd; }
+  .payload-net-store   { color: #88ddaa; }
+  .payload-auto-miner  { color: #88ccdd; }
+  .payload-cargo-net   { color: #ffcc44; }
+
+  .action-btn {
+    display: block;
+    margin-top: 8px;
+    width: 100%;
+    background: rgba(40, 80, 120, 0.8);
+    border: 1px solid #4a8aaa;
+    border-radius: 3px;
+    color: #88ddff;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .action-btn:hover {
+    background: rgba(60, 110, 160, 0.9);
+    border-color: #6aaccf;
+  }
 
   .state-idle                      { color: #88ffaa; }
   .state-moving                    { color: #ffdd88; }
@@ -213,6 +241,7 @@
   .state-deploying-miner           { color: #ffbb44; }
   .state-waiting-at-asteroid       { color: #88ffaa; }
   .state-collecting-nets           { color: #88ddff; }
+  .state-resupplying-miner         { color: #88ffaa; }
 
   .state-am-in-transit             { color: #6a8a9a; }
   .state-am-deploying              { color: #ffdd88; }

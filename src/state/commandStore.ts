@@ -7,5 +7,6 @@ export type GameCommand =
   | { type: 'manualSave' }
   | { type: 'upgradeShip'; shipId: string; stat: 'cargo' }
   | { type: 'deployMiner'; haulerId: string; asteroidId: string }
+  | { type: 'resupplyMiner'; minerId: string }
 
 export const commandQueue = writable<GameCommand[]>([])

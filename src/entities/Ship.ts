@@ -114,6 +114,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       case 'deploying-miner':
       case 'waiting-at-asteroid':
       case 'collecting-nets':
+      case 'resupplying-miner':
         this.setVelocity(0, 0)
         break
       case 'idle':

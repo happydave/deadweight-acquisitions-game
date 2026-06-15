@@ -19,6 +19,7 @@ export const NET_CAPACITY = 50            // resource units per net
 export const MINER_INITIAL_NETS = 3       // spare nets transferred on deploy (+ 1 active = 4 total)
 export const MINER_DEPLOY_DURATION_MS = 2000
 export const MINER_DEPLOY_PROXIMITY = 80  // world units; Hauler arrival threshold
+export const RESUPPLY_DURATION_MS = 1500
 export const MINER_TEXTURE_KEY = 'autominer'
 
 export function generateAutoMinerTexture(scene: Phaser.Scene): void {

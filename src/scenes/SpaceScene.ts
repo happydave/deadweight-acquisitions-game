@@ -27,6 +27,7 @@ import {
   MINER_INITIAL_NETS,
   MINER_DEPLOY_DURATION_MS,
   MINER_DEPLOY_PROXIMITY,
+  RESUPPLY_DURATION_MS,
   type AutoMinerState,
 } from '../entities/AutoMiner'
 import {
@@ -262,10 +263,26 @@ export class SpaceScene extends Phaser.Scene {
       this.attachShipEvents(ship)
     }
 
-    // Rescue any ship stuck in collecting-nets (in-flight nets are not persisted)
+    // Rescue ships stuck in mid-animation states
     for (const ship of this.ships) {
       if (ship.shipState === 'collecting-nets') {
         ship.departForBase()
+      } else if (ship.shipState === 'resupplying-miner' && ship.asteroidTarget !== null) {
+        // Complete the resupply immediately
+        const miner = this.autoMiners.find(m => m.asteroidId === ship.asteroidTarget!.id)
+        const netStoreSlot = ship.attachmentPoints.find(ap => ap.payload?.kind === 'net-store')
+        const transferred =
+          netStoreSlot?.payload?.kind === 'net-store'
+            ? Math.min(MINER_INITIAL_NETS + 1, netStoreSlot.payload.currentNets)
+            : 0
+        if (miner && transferred > 0 && netStoreSlot?.payload?.kind === 'net-store') {
+          netStoreSlot.payload.currentNets -= transferred
+          miner.spareNetCount += transferred - 1
+          miner.state = 'mining'
+        }
+        ship.shipState = 'waiting-at-asteroid'
+      } else if (ship.shipState === 'resupplying-miner') {
+        ship.shipState = 'waiting-at-asteroid'
       }
     }
   }
@@ -688,6 +705,8 @@ export class SpaceScene extends Phaser.Scene {
       this.applyShipUpgrade(cmd.shipId, cmd.stat)
     } else if (cmd.type === 'deployMiner') {
       this.initiateDeployMiner(cmd.haulerId, cmd.asteroidId)
+    } else if (cmd.type === 'resupplyMiner') {
+      this.initiateResupplyMiner(cmd.minerId)
     }
   }
 
@@ -701,6 +720,45 @@ export class SpaceScene extends Phaser.Scene {
     ship.target = { x: asteroid.x, y: asteroid.y }
     ship.shipState = 'traveling-to-asteroid'
     ship.pushToStore()
+  }
+
+  private initiateResupplyMiner(minerId: string): void {
+    const miner = this.autoMinerMap.get(minerId)
+    if (!miner) return
+    const ship = this.ships.find(
+      s => s.shipState === 'waiting-at-asteroid' && s.asteroidTarget?.id === miner.asteroidId,
+    )
+    if (!ship) return
+    const netStoreSlot = ship.attachmentPoints.find(ap => ap.payload?.kind === 'net-store')
+    if (!netStoreSlot || netStoreSlot.payload?.kind !== 'net-store') return
+    if (netStoreSlot.payload.currentNets < 1) return
+    this.beginResupply(ship, miner)
+  }
+
+  private beginResupply(ship: Ship, miner: AutoMiner): void {
+    ship.shipState = 'resupplying-miner'
+    ship.pushToStore()
+
+    this.time.delayedCall(RESUPPLY_DURATION_MS, () => {
+      const netStoreSlot = ship.attachmentPoints.find(ap => ap.payload?.kind === 'net-store')
+      const transferred =
+        netStoreSlot?.payload?.kind === 'net-store'
+          ? Math.min(MINER_INITIAL_NETS + 1, netStoreSlot.payload.currentNets)
+          : 0
+
+      if (transferred > 0 && netStoreSlot?.payload?.kind === 'net-store') {
+        netStoreSlot.payload.currentNets -= transferred
+        miner.spareNetCount += transferred - 1
+        miner.state = 'mining'
+        miner.pushToStore()
+      } else if (miner.tetheredNetIds.length > 0) {
+        this.beginCollecting(ship, miner)
+        return
+      }
+
+      ship.shipState = 'waiting-at-asteroid'
+      ship.pushToStore()
+    })
   }
 
   private shipHasMiner(ship: Ship): boolean {
@@ -1039,13 +1097,23 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    // Detect miner in net-starved or standby-beaconing and trigger collection
+    // Detect miner state transitions requiring Hauler action
     for (const miner of this.autoMiners) {
-      if (miner.state !== 'standby-beaconing' && miner.state !== 'net-starved') continue
       const waitingShip = this.ships.find(
         s => s.shipState === 'waiting-at-asteroid' && s.asteroidTarget?.id === miner.asteroidId,
       )
-      if (waitingShip) {
+      if (!waitingShip) continue
+
+      if (miner.state === 'net-starved') {
+        // Resupply takes priority over collection when NetStore has nets
+        const netStoreSlot = waitingShip.attachmentPoints.find(ap => ap.payload?.kind === 'net-store')
+        if (netStoreSlot?.payload?.kind === 'net-store' && netStoreSlot.payload.currentNets >= 1) {
+          this.beginResupply(waitingShip, miner)
+        } else {
+          // NetStore empty — fall back to collecting any full-tethered nets
+          this.beginCollecting(waitingShip, miner)
+        }
+      } else if (miner.state === 'standby-beaconing') {
         this.beginCollecting(waitingShip, miner)
       }
     }

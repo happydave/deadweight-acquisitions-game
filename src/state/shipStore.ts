@@ -11,6 +11,7 @@ export type ShipState =
   | 'deploying-miner'
   | 'waiting-at-asteroid'
   | 'collecting-nets'
+  | 'resupplying-miner'
 
 export interface SelectedShipData {
   id: string
