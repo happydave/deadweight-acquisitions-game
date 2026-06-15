@@ -7,6 +7,9 @@ export type ShipState =
   | 'moving'
   | 'traveling-to-base'
   | 'unloading'
+  | 'traveling-to-asteroid'
+  | 'deploying-miner'
+  | 'waiting-at-asteroid'
 
 export interface SelectedShipData {
   id: string

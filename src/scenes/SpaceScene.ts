@@ -21,6 +21,14 @@ import {
   MAX_UPGRADE_LEVEL,
 } from '../entities/Ship'
 
+import {
+  AutoMiner,
+  generateAutoMinerTexture,
+  MINER_INITIAL_NETS,
+  MINER_DEPLOY_DURATION_MS,
+  MINER_DEPLOY_PROXIMITY,
+  type AutoMinerState,
+} from '../entities/AutoMiner'
 import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
@@ -69,9 +77,13 @@ const MINIMAP_COLOR_SHIP = 0xffee44
 export class SpaceScene extends Phaser.Scene {
   private starLayers: Phaser.GameObjects.TileSprite[] = []
   private asteroids: Asteroid[] = []
+  private asteroidMap: Map<string, Asteroid> = new Map()
   private ships: Ship[] = []
+  private autoMiners: AutoMiner[] = []
+  private autoMinerMap: Map<string, AutoMiner> = new Map()
   private base!: Base
   private selectedShip: Ship | null = null
+  private selectedAutoMinerEntity: AutoMiner | null = null
   private selectionRing: Phaser.GameObjects.Graphics | null = null
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private wasd!: {
@@ -105,6 +117,7 @@ export class SpaceScene extends Phaser.Scene {
     generateShipTexture(this)
     generateBaseTexture(this)
     generatePlanetTexture(this)
+    generateAutoMinerTexture(this)
     this.spawnPlanet()
 
     const save = GameSaveService.load()
@@ -141,6 +154,7 @@ export class SpaceScene extends Phaser.Scene {
 
     // Restore asteroids from save (bypasses generateWorld — IDs and depletion are in save)
     this.asteroids = save.asteroids.map(data => new Asteroid(this, data))
+    this.asteroidMap = new Map(this.asteroids.map(a => [a.id, a]))
 
     // Restore base
     this.base = new Base(this, BASE_X, BASE_Y)
@@ -155,6 +169,31 @@ export class SpaceScene extends Phaser.Scene {
         fontFamily: 'monospace',
       })
       .setOrigin(0.5, 0)
+
+    // Restore AutoMiners
+    for (const snap of save.autoMiners) {
+      const miner = new AutoMiner(this, snap.id)
+      miner.state = snap.state
+      miner.asteroidId = snap.asteroidId
+      miner.spareNetCount = snap.spareNetCount
+      miner.activeNetFill = snap.activeNetFill
+      miner.tetheredNets = [...snap.tetheredNets]
+
+      if (snap.asteroidId !== null) {
+        const asteroid = this.asteroidMap.get(snap.asteroidId)
+        if (asteroid) {
+          miner.setPosition(asteroid.x, asteroid.y - 20)
+          miner.setVisible(true)
+        } else {
+          console.warn(`AutoMiner ${snap.id}: asteroid ${snap.asteroidId} not found, skipping`)
+          miner.destroy()
+          continue
+        }
+      }
+
+      this.autoMiners.push(miner)
+      this.autoMinerMap.set(miner.id, miner)
+    }
 
     // Restore ships
     for (const snap of save.ships) {
@@ -177,6 +216,10 @@ export class SpaceScene extends Phaser.Scene {
       ship.attachmentPoints = snap.attachmentPoints
       ship.setAngle(snap.heading)
 
+      if (snap.asteroidTargetId !== null) {
+        ship.asteroidTarget = this.asteroidMap.get(snap.asteroidTargetId) ?? null
+      }
+
       this.ships.push(ship)
       this.base.registerShip(ship.id)
       this.attachShipInput(ship)
@@ -185,7 +228,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -212,11 +255,21 @@ export class SpaceScene extends Phaser.Scene {
         heading: s.heading,
         shipState: s.shipState,
         target: s.target,
+        asteroidTargetId: s.asteroidTarget?.id ?? null,
         cargoContents: { ...s.cargoContents },
         cargoCapacity: s.cargoCapacity,
         cargoUpgradeLevel: s.cargoUpgradeLevel,
         attachmentPoints: s.attachmentPoints,
         unloadTimer: s.unloadTimer,
+      })),
+      autoMiners: this.autoMiners.map(m => ({
+        id: m.id,
+        state: m.state,
+        asteroidId: m.asteroidId,
+        technologyLevel: m.technologyLevel,
+        spareNetCount: m.spareNetCount,
+        activeNetFill: m.activeNetFill,
+        tetheredNets: [...m.tetheredNets],
       })),
     }
   }
@@ -248,6 +301,7 @@ export class SpaceScene extends Phaser.Scene {
     gameState.worldSeed = seed
     const asteroidData = generateWorld(seed)
     this.asteroids = asteroidData.map(data => new Asteroid(this, data))
+    this.asteroidMap = new Map(this.asteroids.map(a => [a.id, a]))
   }
 
   private spawnBase(): void {
@@ -263,6 +317,16 @@ export class SpaceScene extends Phaser.Scene {
 
   private spawnStarterShip(): void {
     const ship = new Ship(this, 0, 0, 'Hauler-01', { x: BASE_X, y: BASE_Y }, this.base)
+
+    // Pre-load one AutoMiner on the first medium attachment point
+    const miner = new AutoMiner(this)
+    this.autoMiners.push(miner)
+    this.autoMinerMap.set(miner.id, miner)
+    const mediumSlot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+    if (mediumSlot) {
+      mediumSlot.payload = { kind: 'auto-miner', minerId: miner.id }
+    }
+
     this.ships.push(ship)
     this.base.registerShip(ship.id)
     this.attachShipInput(ship)
@@ -294,6 +358,10 @@ export class SpaceScene extends Phaser.Scene {
     if (this.selectionRing) {
       this.selectionRing.destroy()
       this.selectionRing = null
+    }
+    if (this.selectedAutoMinerEntity) {
+      this.selectedAutoMinerEntity.deselect()
+      this.selectedAutoMinerEntity = null
     }
     selectedAsteroid.set(null)
   }
@@ -403,6 +471,7 @@ export class SpaceScene extends Phaser.Scene {
     const data = generateCompanyAsteroid(seed)
     const asteroid = new Asteroid(this, data)
     this.asteroids.push(asteroid)
+    this.asteroidMap.set(asteroid.id, asteroid)
   }
 
   private buildStarLayers(): void {
@@ -459,7 +528,101 @@ export class SpaceScene extends Phaser.Scene {
       GameSaveService.save(this.buildSaveState())
     } else if (cmd.type === 'upgradeShip') {
       this.applyShipUpgrade(cmd.shipId, cmd.stat)
+    } else if (cmd.type === 'deployMiner') {
+      this.initiateDeployMiner(cmd.haulerId, cmd.asteroidId)
     }
+  }
+
+  private initiateDeployMiner(haulerId: string, asteroidId: string): void {
+    const ship = this.ships.find(s => s.id === haulerId)
+    const asteroid = this.asteroidMap.get(asteroidId)
+    if (!ship || !asteroid) return
+    if (!this.shipHasMiner(ship)) return
+
+    ship.asteroidTarget = asteroid
+    ship.target = { x: asteroid.x, y: asteroid.y }
+    ship.shipState = 'traveling-to-asteroid'
+    ship.pushToStore()
+  }
+
+  private shipHasMiner(ship: Ship): boolean {
+    return ship.attachmentPoints.some(
+      ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner',
+    )
+  }
+
+  private performDeploy(ship: Ship): void {
+    const asteroid = ship.asteroidTarget
+    if (!asteroid) {
+      ship.shipState = 'waiting-at-asteroid'
+      ship.pushToStore()
+      return
+    }
+
+    const slotIndex = ship.attachmentPoints.findIndex(
+      ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner',
+    )
+    if (slotIndex === -1) {
+      ship.shipState = 'waiting-at-asteroid'
+      ship.pushToStore()
+      return
+    }
+
+    const slot = ship.attachmentPoints[slotIndex]
+    if (slot.payload?.kind !== 'auto-miner') return
+
+    const miner = this.autoMinerMap.get(slot.payload.minerId)
+    if (!miner) {
+      ship.attachmentPoints[slotIndex] = { ...slot, payload: null }
+      ship.shipState = 'waiting-at-asteroid'
+      ship.pushToStore()
+      return
+    }
+
+    // Transfer nets from NetStore: MINER_INITIAL_NETS spares + 1 active = total MINER_INITIAL_NETS + 1
+    const netStoreSlot = ship.attachmentPoints.find(
+      ap => ap.payload?.kind === 'net-store',
+    )
+    let transferred = 0
+    if (netStoreSlot?.payload?.kind === 'net-store') {
+      const desired = MINER_INITIAL_NETS + 1
+      transferred = Math.min(desired, netStoreSlot.payload.currentNets)
+      netStoreSlot.payload.currentNets -= transferred
+    }
+    miner.spareNetCount = Math.max(0, transferred - 1)  // last net is active net
+    miner.activeNetFill = 0
+
+    // Clear attachment slot
+    ship.attachmentPoints[slotIndex] = { ...slot, payload: null }
+
+    // Reveal miner at ship position, tween to asteroid
+    miner.asteroidId = asteroid.id
+    miner.state = 'deploying'
+    miner.setPosition(ship.x, ship.y)
+    miner.setVisible(true)
+
+    const destX = asteroid.x
+    const destY = asteroid.y - 20
+    this.tweens.add({
+      targets: miner,
+      x: destX,
+      y: destY,
+      duration: MINER_DEPLOY_DURATION_MS,
+      ease: 'Power2',
+      onComplete: () => {
+        miner.state = 'attaching'
+        // Attach always succeeds in WI 406
+        if (asteroid.currentQuantity <= 0) {
+          miner.state = 'standby-beaconing'
+        } else {
+          miner.state = 'mining'
+        }
+        miner.pushToStore()
+      },
+    })
+
+    ship.shipState = 'waiting-at-asteroid'
+    ship.pushToStore()
   }
 
   private commissionNewShip(): void {
@@ -547,19 +710,34 @@ export class SpaceScene extends Phaser.Scene {
 
           const hitShip = targets.some(t => t instanceof Ship)
           if (!hitShip) {
-            const hitBase = targets.find(t => t instanceof Base)
-            if (hitBase) {
-              selectedAsteroid.set(null)
-              basePanelOpen.set(true)
+            const hitAutoMiner = targets.find(t => t instanceof AutoMiner) as AutoMiner | undefined
+            if (hitAutoMiner && hitAutoMiner.state !== 'in-transit') {
+              this.clearSelection()
+              this.selectedAutoMinerEntity = hitAutoMiner
+              hitAutoMiner.select()
             } else {
-              const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
-              if (hitAsteroid) {
-                // Clicking an asteroid with a ship selected: deploy orders come in WI 406+
-                selectedShip.set(null)
-                hitAsteroid.selectSelf()
+              const hitBase = targets.find(t => t instanceof Base)
+              if (hitBase) {
+                selectedAsteroid.set(null)
+                if (this.selectedAutoMinerEntity) {
+                  this.selectedAutoMinerEntity.deselect()
+                  this.selectedAutoMinerEntity = null
+                }
+                basePanelOpen.set(true)
               } else {
-                this.clearSelection()
-                basePanelOpen.set(false)
+                const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
+                if (hitAsteroid) {
+                  if (this.selectedShip && this.shipHasMiner(this.selectedShip)) {
+                    const haulerId = this.selectedShip.id
+                    commandQueue.update(q => [...q, { type: 'deployMiner', haulerId, asteroidId: hitAsteroid.id }])
+                  } else {
+                    this.clearSelection()
+                    hitAsteroid.selectSelf()
+                  }
+                } else {
+                  this.clearSelection()
+                  basePanelOpen.set(false)
+                }
               }
             }
           }
@@ -661,9 +839,40 @@ export class SpaceScene extends Phaser.Scene {
       asteroid.updateOrbit(dt)
     }
 
+    // Update deployed miner positions to follow their asteroid
+    const deployedStates = new Set<AutoMinerState>([
+      'attaching', 'mining', 'ejecting-net', 'net-starved', 'standby-beaconing',
+    ])
+    for (const miner of this.autoMiners) {
+      if (miner.asteroidId && deployedStates.has(miner.state)) {
+        const asteroid = this.asteroidMap.get(miner.asteroidId)
+        if (asteroid) {
+          miner.setPosition(asteroid.x, asteroid.y - 20)
+        }
+      }
+    }
+
+    // Run AutoMiner mining tick
+    for (const miner of this.autoMiners) {
+      if (miner.state === 'mining' && miner.asteroidId) {
+        const asteroid = this.asteroidMap.get(miner.asteroidId)
+        if (asteroid) {
+          miner.updateMining(dt, asteroid)
+        }
+      }
+    }
+
     for (const ship of this.ships) {
+      // Keep ship target locked to orbiting asteroid
+      if (ship.shipState === 'traveling-to-asteroid' && ship.asteroidTarget) {
+        ship.target = { x: ship.asteroidTarget.x, y: ship.asteroidTarget.y }
+      }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
       ship.updateSteering(dt)
+      // Detect arrival: steerTowardTarget transitioned to deploying-miner
+      if (ship.shipState === 'deploying-miner') {
+        this.performDeploy(ship)
+      }
     }
 
     let idle = 0, active = 0, returning = 0

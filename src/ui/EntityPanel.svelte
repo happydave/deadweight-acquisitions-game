@@ -1,5 +1,7 @@
 <script lang="ts">
   import { selectedShip, selectedAsteroid } from '../state/shipStore'
+  import { selectedAutoMiner } from '../state/autoMinerStore'
+  import { NET_CAPACITY } from '../entities/AutoMiner'
 
   function cargoTotal(contents: Record<string, number>): number {
     return Object.values(contents).reduce((sum, n) => sum + n, 0)
@@ -13,14 +15,35 @@
     return size === 'small' ? 'S' : 'M'
   }
 
-  function payloadLabel(payload: { kind: string; currentNets?: number; maxNets?: number } | null): string {
+  function payloadLabel(payload: { kind: string; currentNets?: number; maxNets?: number; minerId?: string } | null): string {
     if (payload === null) return 'empty'
     if (payload.kind === 'net-store') return `net-store [${payload.currentNets}/${payload.maxNets}]`
+    if (payload.kind === 'auto-miner') return `auto-miner`
     return payload.kind
   }
 </script>
 
-{#if $selectedShip}
+{#if $selectedAutoMiner}
+  <div class="panel">
+    <div class="name autominer-name">AUTOMINER</div>
+    <div class="row">
+      <span class="label">State</span>
+      <span class="value state-am-{$selectedAutoMiner.state}">{$selectedAutoMiner.state}</span>
+    </div>
+    <div class="row">
+      <span class="label">Net fill</span>
+      <span class="value">{Math.floor($selectedAutoMiner.activeNetFill)} / {NET_CAPACITY}</span>
+    </div>
+    <div class="row">
+      <span class="label">Spare nets</span>
+      <span class="value">{$selectedAutoMiner.spareNetCount}</span>
+    </div>
+    <div class="row">
+      <span class="label">Tethered</span>
+      <span class="value">{$selectedAutoMiner.tetheredNetCount}</span>
+    </div>
+  </div>
+{:else if $selectedShip}
   <div class="panel">
     <div class="name">{$selectedShip.name}</div>
     <div class="row">
@@ -150,14 +173,28 @@
     font-size: 11px;
   }
 
-  .payload-net-store {
-    color: #88ddaa;
+  .autominer-name {
+    color: #88ccdd;
   }
 
-  .state-idle            { color: #88ffaa; }
-  .state-moving          { color: #ffdd88; }
-  .state-traveling-to-base   { color: #ff9944; }
-  .state-unloading       { color: #44aaff; }
+  .payload-net-store  { color: #88ddaa; }
+  .payload-auto-miner { color: #88ccdd; }
+
+  .state-idle                      { color: #88ffaa; }
+  .state-moving                    { color: #ffdd88; }
+  .state-traveling-to-base         { color: #ff9944; }
+  .state-unloading                 { color: #44aaff; }
+  .state-traveling-to-asteroid     { color: #ffdd88; }
+  .state-deploying-miner           { color: #ffbb44; }
+  .state-waiting-at-asteroid       { color: #88ffaa; }
+
+  .state-am-in-transit             { color: #6a8a9a; }
+  .state-am-deploying              { color: #ffdd88; }
+  .state-am-attaching              { color: #ffbb44; }
+  .state-am-mining                 { color: #88ffaa; }
+  .state-am-ejecting-net           { color: #88ddff; }
+  .state-am-net-starved            { color: #ff6644; }
+  .state-am-standby-beaconing      { color: #ffaa44; }
 
   .resource-iron         { color: #c07840; }
   .resource-ice          { color: #99ddff; }

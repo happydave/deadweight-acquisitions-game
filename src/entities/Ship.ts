@@ -3,7 +3,9 @@ import { nanoid } from 'nanoid'
 import { selectedShip, type ShipState } from '../state/shipStore'
 import type { ResourceType } from '../world/worldConfig'
 import type { Base } from './Base'
+import type { Asteroid } from './Asteroid'
 import { makeDefaultLoadout, type AttachmentPoint } from '../state/attachmentTypes'
+import { MINER_DEPLOY_PROXIMITY } from './AutoMiner'
 
 export const SHIP_TEXTURE_KEY = 'ship'
 export const SHIP_SPEED = 180          // world units per second
@@ -46,6 +48,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   target: { x: number; y: number } | null
   heading: number   // degrees, 0 = east
   attachmentPoints: AttachmentPoint[]
+  asteroidTarget: Asteroid | null
   speedMultiplier = 1.0
   unloadTimer: number
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
@@ -72,6 +75,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.target = null
     this.heading = 0
     this.attachmentPoints = makeDefaultLoadout()
+    this.asteroidTarget = null
     this.unloadTimer = 0
     this.isSelected = false
 
@@ -97,6 +101,19 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         break
       case 'unloading':
         this.updateUnloading(dt)
+        break
+      case 'traveling-to-asteroid':
+        // SpaceScene updates this.target each frame to the asteroid's current position.
+        // On arrival, SpaceScene detects the deploying-miner state and calls performDeploy.
+        this.steerTowardTarget(dt, MINER_DEPLOY_PROXIMITY, () => {
+          this.setVelocity(0, 0)
+          this.shipState = 'deploying-miner'
+          this.pushToStore()
+        })
+        break
+      case 'deploying-miner':
+      case 'waiting-at-asteroid':
+        this.setVelocity(0, 0)
         break
       case 'idle':
         break

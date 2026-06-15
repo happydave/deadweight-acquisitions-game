@@ -8,7 +8,12 @@ export interface NetStorePayload {
   currentNets: number
 }
 
-export type AttachmentPayload = NetStorePayload
+export interface AutoMinerPayload {
+  readonly kind: 'auto-miner'
+  readonly minerId: string
+}
+
+export type AttachmentPayload = NetStorePayload | AutoMinerPayload
 
 export interface AttachmentPoint {
   readonly id: string

@@ -74,6 +74,18 @@ function migrate(raw: SaveState): SaveState | null {
       // falls through
     }
     case 5:
+      // v5 → v6: add autoMiners array; add asteroidTargetId to ships
+      raw = {
+        ...raw,
+        schemaVersion: 6,
+        autoMiners: [],
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          asteroidTargetId: null,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 6:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)
