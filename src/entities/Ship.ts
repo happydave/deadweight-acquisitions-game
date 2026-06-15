@@ -57,6 +57,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   unloadTimer: number
   attachUnloadTimer: number = 0
   waitOrbitalAngle: number | null = null
+  dockSlotIndex: number | null = null
   minerTarget: AutoMiner | null = null
   collectSlotProgress: Map<number, number> = new Map()
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
@@ -185,10 +186,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.pushToStore()
   }
 
-  departForBase(): void {
+  departForBase(slotTarget?: { x: number; y: number }): void {
     this.collectSlotProgress.clear()
     this.shipState = 'traveling-to-base'
-    this.target = { ...this.basePosition }
+    this.target = slotTarget ? { ...slotTarget } : { ...this.basePosition }
     this.asteroidTarget = null
     this.waitOrbitalAngle = null
     this.minerTarget = null
@@ -269,6 +270,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.destroyProgressBar()
     this.shipState = 'idle'
     this.pushToStore()
+    this.emit('unload-complete')
   }
 
   private destroyProgressBar(): void {

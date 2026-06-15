@@ -53,6 +53,7 @@ export interface ShipSnapshot {
   unloadTimer: number
   attachUnloadTimer: number
   waitOrbitalAngle: number | null
+  dockSlotIndex: number | null
 }
 
 export interface BaseSnapshot {

@@ -3,6 +3,7 @@ import { shipHasFreeMediumSlot, selectDispatchTarget, selectDeployTarget } from 
 import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
 import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
+import { computeServiceSlots, SERVICE_SLOT_COUNT, type SlotPosition } from '../world/serviceSlots'
 import {
   ASTEROID_TEXTURE_SIZE,
   RESOURCE_COLORS,
@@ -137,6 +138,8 @@ export class SpaceScene extends Phaser.Scene {
   private companyArrivalAccumulator = 0
   private followCam = false
   private minimap!: Phaser.GameObjects.Graphics
+  private slotPositions: SlotPosition[] = []
+  private slotOccupants: Array<string | null> = []
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -212,6 +215,7 @@ export class SpaceScene extends Phaser.Scene {
         fontFamily: 'monospace',
       })
       .setOrigin(0.5, 0)
+    this.initSlots()
 
     // Restore AutoMiners
     for (const snap of save.autoMiners) {
@@ -281,7 +285,7 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    // Restore ships
+    // Restore ships — loop 1: create entities and reconstruct slot occupancy
     for (const snap of save.ships) {
       const ship = new Ship(
         this,
@@ -308,15 +312,22 @@ export class SpaceScene extends Phaser.Scene {
       }
       ship.waitOrbitalAngle = snap.waitOrbitalAngle
 
+      // Restore dock slot assignment
+      const savedSlot = snap.dockSlotIndex ?? null
+      if (savedSlot !== null && savedSlot >= 0 && savedSlot < this.slotOccupants.length) {
+        ship.dockSlotIndex = savedSlot
+        this.slotOccupants[savedSlot] = ship.id
+      }
+
       this.ships.push(ship)
       this.base.registerShip(ship.id)
       this.attachShipEvents(ship)
     }
 
-    // Rescue ships stuck in mid-animation states
+    // Rescue ships stuck in mid-animation states — loop 2: runs after slot occupancy is reconstructed
     for (const ship of this.ships) {
       if (ship.shipState === 'collecting-nets') {
-        ship.departForBase()
+        this.departShipForBase(ship)
       } else if (ship.shipState === 'resupplying-miner' && ship.asteroidTarget !== null) {
         // Complete the resupply immediately
         const miner = this.autoMiners.find(m => m.asteroidId === ship.asteroidTarget!.id)
@@ -370,7 +381,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 11,
+      schemaVersion: 12,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -405,6 +416,7 @@ export class SpaceScene extends Phaser.Scene {
         unloadTimer: s.unloadTimer,
         attachUnloadTimer: s.attachUnloadTimer,
         waitOrbitalAngle: s.waitOrbitalAngle,
+        dockSlotIndex: s.dockSlotIndex,
       })),
       autoMiners: this.autoMiners.map(m => ({
         id: m.id,
@@ -468,6 +480,38 @@ export class SpaceScene extends Phaser.Scene {
         fontFamily: 'monospace',
       })
       .setOrigin(0.5, 0)
+    this.initSlots()
+  }
+
+  private initSlots(): void {
+    this.slotPositions = computeServiceSlots(BASE_X, BASE_Y)
+    this.slotOccupants = Array(SERVICE_SLOT_COUNT).fill(null)
+    const gfx = this.add.graphics()
+    gfx.lineStyle(1, 0x88ccff, 0.25)
+    for (const slot of this.slotPositions) {
+      gfx.strokeCircle(slot.x, slot.y, 8)
+    }
+  }
+
+  private assignDockSlot(ship: Ship): SlotPosition | null {
+    const idx = this.slotOccupants.findIndex(occ => occ === null)
+    if (idx < 0) return null
+    this.slotOccupants[idx] = ship.id
+    ship.dockSlotIndex = idx
+    return this.slotPositions[idx]
+  }
+
+  private releaseDockSlot(ship: Ship): void {
+    const idx = ship.dockSlotIndex
+    if (idx !== null && idx >= 0 && idx < this.slotOccupants.length) {
+      this.slotOccupants[idx] = null
+    }
+    ship.dockSlotIndex = null
+  }
+
+  private departShipForBase(ship: Ship): void {
+    const slot = this.assignDockSlot(ship)
+    ship.departForBase(slot ?? undefined)
   }
 
   private spawnStarterShip(): void {
@@ -499,6 +543,7 @@ export class SpaceScene extends Phaser.Scene {
     this.attachShipInput(ship)
     ship.on('begin-unloading', () => this.processNetUnloading(ship))
     ship.on('attachment-unload-complete', () => this.processAttachmentNets(ship))
+    ship.on('unload-complete', () => this.releaseDockSlot(ship))
   }
 
   private attachMinerEvents(miner: AutoMiner): void {
@@ -520,7 +565,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private beginCollecting(ship: Ship, miner: AutoMiner, onComplete?: () => void): void {
-    const complete = onComplete ?? (() => ship.departForBase())
+    const complete = onComplete ?? (() => this.departShipForBase(ship))
 
     const fullNetIds = miner.tetheredNetIds.filter(id => {
       const net = this.cargoNetMap.get(id)
@@ -699,7 +744,7 @@ export class SpaceScene extends Phaser.Scene {
     miner.stopBeacon()
     activeBeacons.update(beacons => beacons.filter(b => b.id !== miner.id))
     miner.pushToStore()
-    ship.departForBase()
+    this.departShipForBase(ship)
   }
 
   private drawTethers(): void {
@@ -1088,9 +1133,7 @@ export class SpaceScene extends Phaser.Scene {
     const minerId = this.shipMinerRecoveryTargets.get(ship.id)
     this.shipMinerRecoveryTargets.delete(ship.id)
     if (!minerId) {
-      ship.shipState = 'traveling-to-base'
-      ship.target = { x: BASE_X, y: BASE_Y }
-      ship.pushToStore()
+      this.departShipForBase(ship)
       return
     }
     const miner = this.autoMinerMap.get(minerId)
@@ -1105,9 +1148,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.stopBeacon()
       activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
     }
-    ship.shipState = 'traveling-to-base'
-    ship.target = { x: BASE_X, y: BASE_Y }
-    ship.pushToStore()
+    this.departShipForBase(ship)
   }
 
   private shipHasMiner(ship: Ship): boolean {
@@ -1580,7 +1621,7 @@ export class SpaceScene extends Phaser.Scene {
       // attempting any collection or recovery. If full, depart immediately so a capable ship
       // can be dispatched on the next autoDispatch tick.
       if (!shipHasFreeMediumSlot(waitingShip)) {
-        waitingShip.departForBase()
+        this.departShipForBase(waitingShip)
         continue
       }
 
@@ -1599,7 +1640,7 @@ export class SpaceScene extends Phaser.Scene {
           freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
           this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
         } else {
-          waitingShip.departForBase()
+          this.departShipForBase(waitingShip)
         }
       } else if (miner.state === 'mining' || miner.state === 'ejecting-net') {
         const fullNets = miner.tetheredNetIds.filter(id => this.cargoNetMap.get(id)?.state === 'full-tethered')
