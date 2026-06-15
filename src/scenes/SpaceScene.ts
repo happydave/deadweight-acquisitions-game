@@ -1387,6 +1387,16 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'traveling-to-asteroid' && ship.asteroidTarget) {
         ship.target = { x: ship.asteroidTarget.x, y: ship.asteroidTarget.y }
       }
+      // Keep ship docked to orbiting asteroid while stationary at asteroid
+      if (
+        ship.asteroidTarget && (
+          ship.shipState === 'waiting-at-asteroid' ||
+          ship.shipState === 'collecting-nets' ||
+          ship.shipState === 'resupplying-miner'
+        )
+      ) {
+        ship.setPosition(ship.asteroidTarget.x, ship.asteroidTarget.y + 30)
+      }
       // Keep responding-to-beacon target locked to miner's current position
       if (ship.shipState === 'responding-to-beacon') {
         const minerId = this.shipMinerRecoveryTargets.get(ship.id)
