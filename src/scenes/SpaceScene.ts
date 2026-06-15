@@ -9,6 +9,8 @@ import {
   COMPANY_ARRIVAL_MIN_INTERVAL,
   COMPANY_ASTEROID_MAX_COUNT,
   ORBITAL_K,
+  SHIP_PARK_RADIUS,
+  SHIP_PARK_ORBIT_RATE,
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
@@ -294,6 +296,7 @@ export class SpaceScene extends Phaser.Scene {
       if (snap.asteroidTargetId !== null) {
         ship.asteroidTarget = this.asteroidMap.get(snap.asteroidTargetId) ?? null
       }
+      ship.waitOrbitalAngle = snap.waitOrbitalAngle
 
       this.ships.push(ship)
       this.base.registerShip(ship.id)
@@ -357,7 +360,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 8,
+      schemaVersion: 9,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -390,6 +393,7 @@ export class SpaceScene extends Phaser.Scene {
         cargoUpgradeLevel: s.cargoUpgradeLevel,
         attachmentPoints: s.attachmentPoints,
         unloadTimer: s.unloadTimer,
+        waitOrbitalAngle: s.waitOrbitalAngle,
       })),
       autoMiners: this.autoMiners.map(m => ({
         id: m.id,
@@ -1471,7 +1475,7 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'traveling-to-asteroid' && ship.asteroidTarget) {
         ship.target = { x: ship.asteroidTarget.x, y: ship.asteroidTarget.y }
       }
-      // Keep ship docked to orbiting asteroid while stationary at asteroid
+      // Orbit asteroid while parked
       if (
         ship.asteroidTarget &&
         this.asteroidMap.has(ship.asteroidTarget.id) && (
@@ -1480,7 +1484,15 @@ export class SpaceScene extends Phaser.Scene {
           ship.shipState === 'resupplying-miner'
         )
       ) {
-        ship.setPosition(ship.asteroidTarget.x, ship.asteroidTarget.y + 30)
+        const ast = ship.asteroidTarget
+        if (ship.waitOrbitalAngle === null) {
+          ship.waitOrbitalAngle = Math.atan2(ship.y - ast.y, ship.x - ast.x)
+        }
+        ship.waitOrbitalAngle += SHIP_PARK_ORBIT_RATE * dt
+        ship.setPosition(
+          ast.x + Math.cos(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
+          ast.y + Math.sin(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
+        )
       }
       // Keep responding-to-beacon target locked to miner's current position
       if (ship.shipState === 'responding-to-beacon') {

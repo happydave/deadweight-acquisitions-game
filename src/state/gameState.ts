@@ -51,6 +51,7 @@ export interface ShipSnapshot {
   cargoUpgradeLevel: number
   attachmentPoints: AttachmentPoint[]
   unloadTimer: number
+  waitOrbitalAngle: number | null
 }
 
 export interface BaseSnapshot {

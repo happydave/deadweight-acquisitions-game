@@ -51,6 +51,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   asteroidTarget: Asteroid | null
   speedMultiplier = 1.0
   unloadTimer: number
+  waitOrbitalAngle: number | null = null
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   isSelected: boolean
 
@@ -179,6 +180,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.shipState = 'traveling-to-base'
     this.target = { ...this.basePosition }
     this.asteroidTarget = null
+    this.waitOrbitalAngle = null
     this.pushToStore()
   }
 

@@ -22,6 +22,8 @@ export const COMPANY_ARRIVAL_BASE_INTERVAL = 300  // seconds at full natural res
 export const COMPANY_ARRIVAL_MIN_INTERVAL = 60    // floor when natural resources exhausted
 export const COMPANY_ASTEROID_MAX_COUNT = 12
 export const ORBITAL_K = 500                      // Keplerian constant: ω = K / r^1.5
+export const SHIP_PARK_RADIUS = 35                 // px: orbit radius around asteroid while parked
+export const SHIP_PARK_ORBIT_RATE = 0.4            // rad/s: angular rate of ship orbit around asteroid
 
 // --- Resource weights ---
 export const MOON_RESOURCE_WEIGHTS: Record<ResourceType, number> = {

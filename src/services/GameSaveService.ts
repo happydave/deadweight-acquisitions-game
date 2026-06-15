@@ -124,6 +124,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 8:
+      // v8 → v9: add waitOrbitalAngle to ships
+      raw = {
+        ...raw,
+        schemaVersion: 9,
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          waitOrbitalAngle: null,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 9:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)
