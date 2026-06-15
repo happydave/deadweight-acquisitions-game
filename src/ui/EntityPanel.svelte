@@ -23,6 +23,11 @@
       <span class="label">State</span>
       <span class="value state-{$selectedShip.state}">{$selectedShip.state}</span>
     </div>
+    {#if $selectedShip.state === 'unloading'}
+      <div class="unload-bar-track">
+        <div class="unload-bar-fill" style="width: {$selectedShip.unloadProgress * 100}%"></div>
+      </div>
+    {/if}
     <div class="row">
       <span class="label">Cargo</span>
       <span class="value">{Math.floor(cargoTotal($selectedShip.cargoContents))} / {$selectedShip.cargoCapacity}</span>
@@ -99,6 +104,21 @@
 
   .value {
     color: #cce0f0;
+  }
+
+  .unload-bar-track {
+    height: 5px;
+    background: rgba(30, 50, 80, 0.8);
+    border-radius: 2px;
+    margin-bottom: 6px;
+    overflow: hidden;
+  }
+
+  .unload-bar-fill {
+    height: 100%;
+    background: #88ccff;
+    border-radius: 2px;
+    transition: width 0.05s linear;
   }
 
   .state-idle            { color: #88ffaa; }

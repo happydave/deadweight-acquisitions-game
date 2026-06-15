@@ -19,6 +19,7 @@ export interface SelectedShipData {
   miningUpgradeLevel: number
   cargoContents: Partial<Record<ResourceType, number>>
   autoCycle: boolean
+  unloadProgress: number
 }
 
 export interface SelectedAsteroidData {

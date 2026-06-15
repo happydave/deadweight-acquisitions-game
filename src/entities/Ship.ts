@@ -248,6 +248,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     if (!this.base.canAcceptCargo(this.cargoContents)) return
 
     this.unloadTimer += dt
+    this.pushToStore()
     if (this.unloadTimer < UNLOAD_DURATION) return
 
     this.base.acceptCargo(this.cargoContents)
@@ -309,6 +310,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       miningUpgradeLevel: this.miningUpgradeLevel,
       cargoContents: { ...this.cargoContents },
       autoCycle: this.autoCycle,
+      unloadProgress: this.shipState === 'unloading'
+        ? Math.min(this.unloadTimer / UNLOAD_DURATION, 1)
+        : 0,
     })
   }
 }
