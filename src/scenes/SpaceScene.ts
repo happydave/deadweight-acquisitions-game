@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { shipHasFreeMediumSlot, selectDispatchTarget, selectDeployTarget } from './dispatchLogic'
 import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
 import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
@@ -666,13 +667,10 @@ export class SpaceScene extends Phaser.Scene {
       )
       if (!hasInTransitMiner) continue
 
-      const nearest = this.asteroids
-        .filter(a => !this.ships.some(s => s.asteroidTarget?.id === a.id))
-        .reduce<Asteroid | null>((best, a) => {
-          if (!best) return a
-          return Phaser.Math.Distance.Between(ship.x, ship.y, a.x, a.y) <
-                 Phaser.Math.Distance.Between(ship.x, ship.y, best.x, best.y) ? a : best
-        }, null)
+      const occupiedIds = new Set(
+        this.ships.filter(s => s.asteroidTarget !== null).map(s => s.asteroidTarget!.id),
+      )
+      const nearest = selectDeployTarget(this.asteroids, ship, occupiedIds)
       if (!nearest) continue
 
       ship.asteroidTarget = nearest
@@ -683,13 +681,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private dispatchToAsteroid(asteroid: Asteroid): void {
-    const nearest = this.ships
-      .filter(s => s.shipState === 'idle' && s.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload === null))
-      .reduce<Ship | null>((best, s) => {
-        if (!best) return s
-        return Phaser.Math.Distance.Between(s.x, s.y, asteroid.x, asteroid.y) <
-               Phaser.Math.Distance.Between(best.x, best.y, asteroid.x, asteroid.y) ? s : best
-      }, null)
+    const nearest = selectDispatchTarget(this.ships, asteroid)
     if (!nearest) return
     nearest.asteroidTarget = asteroid
     nearest.target = { x: asteroid.x, y: asteroid.y }
@@ -1587,10 +1579,7 @@ export class SpaceScene extends Phaser.Scene {
       // Attachment-time capacity check: ship must have at least one free medium slot before
       // attempting any collection or recovery. If full, depart immediately so a capable ship
       // can be dispatched on the next autoDispatch tick.
-      const hasFreeMediumSlot = waitingShip.attachmentPoints.some(
-        ap => ap.size === 'medium' && ap.payload === null,
-      )
-      if (!hasFreeMediumSlot) {
+      if (!shipHasFreeMediumSlot(waitingShip)) {
         waitingShip.departForBase()
         continue
       }

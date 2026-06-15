@@ -179,7 +179,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   }
 
   beginCollecting(): void {
-    this.collectSlotProgress.clear()
+    this.collectSlotProgress.clear() // callers must init progress entries AFTER this call
     this.shipState = 'collecting-nets'
     this.setVelocity(0, 0)
     this.pushToStore()
