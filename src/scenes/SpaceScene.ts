@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
 import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
 import { computeServiceSlots, SERVICE_SLOT_COUNT, type SlotPosition } from '../world/serviceSlots'
+import { computeHangarBays, HANGAR_BAY_COUNT, HANGAR_PRESSURIZED_FACTOR, type HangarPosition } from '../world/hangarBays'
 import {
   ASTEROID_TEXTURE_SIZE,
   RESOURCE_COLORS,
@@ -140,6 +141,8 @@ export class SpaceScene extends Phaser.Scene {
   private minimap!: Phaser.GameObjects.Graphics
   private slotPositions: SlotPosition[] = []
   private slotOccupants: Array<string | null> = []
+  private hangarPositions: HangarPosition[] = []
+  private hangarOccupants: Array<string | null> = []
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -207,6 +210,8 @@ export class SpaceScene extends Phaser.Scene {
     this.base.storage = { ...save.base.storage }
     this.base.credits = save.base.credits
     this.base.ownedDockCount = save.base.ownedDockCount ?? 0
+    this.base.ownedHangarCount = save.base.ownedHangarCount ?? 0
+    this.base.hangarPressurized = save.base.hangarPressurized ?? false
     this.base.pushToStore()
 
     this.add
@@ -217,6 +222,7 @@ export class SpaceScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0)
     this.initSlots()
+    this.initHangars()
 
     // Restore AutoMiners
     for (const snap of save.autoMiners) {
@@ -320,6 +326,14 @@ export class SpaceScene extends Phaser.Scene {
         this.slotOccupants[savedSlot] = ship.id
       }
 
+      // Restore hangar slot assignment
+      const savedHangarSlot = snap.hangarSlotIndex ?? null
+      if (savedHangarSlot !== null && savedHangarSlot >= 0 && savedHangarSlot < this.hangarOccupants.length) {
+        ship.hangarSlotIndex = savedHangarSlot
+        ship.hangarServiceTimer = snap.hangarServiceTimer ?? 0
+        this.hangarOccupants[savedHangarSlot] = ship.id
+      }
+
       this.ships.push(ship)
       this.base.registerShip(ship.id)
       this.attachShipEvents(ship)
@@ -327,7 +341,12 @@ export class SpaceScene extends Phaser.Scene {
 
     // Rescue ships stuck in mid-animation states — loop 2: runs after slot occupancy is reconstructed
     for (const ship of this.ships) {
-      if (ship.shipState === 'collecting-nets') {
+      if (ship.shipState === 'in-hangar') {
+        // Hangar service timers are not resumed across sessions; rescue to idle and release slot
+        this.releaseHangarSlot(ship)
+        ship.shipState = 'idle'
+        ship.pushToStore()
+      } else if (ship.shipState === 'collecting-nets') {
         this.departShipForBase(ship)
       } else if (ship.shipState === 'resupplying-miner' && ship.asteroidTarget !== null) {
         // Complete the resupply immediately
@@ -382,13 +401,15 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 13,
+      schemaVersion: 14,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
         storage: { ...this.base.storage },
         credits: this.base.credits,
         ownedDockCount: this.base.ownedDockCount,
+        ownedHangarCount: this.base.ownedHangarCount,
+        hangarPressurized: this.base.hangarPressurized,
       },
       asteroids: this.asteroids.map(a => ({
         id: a.id,
@@ -419,6 +440,8 @@ export class SpaceScene extends Phaser.Scene {
         attachUnloadTimer: s.attachUnloadTimer,
         waitOrbitalAngle: s.waitOrbitalAngle,
         dockSlotIndex: s.dockSlotIndex,
+        hangarSlotIndex: s.hangarSlotIndex,
+        hangarServiceTimer: s.hangarServiceTimer,
       })),
       autoMiners: this.autoMiners.map(m => ({
         id: m.id,
@@ -483,6 +506,7 @@ export class SpaceScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0)
     this.initSlots()
+    this.initHangars()
   }
 
   private initSlots(): void {
@@ -492,6 +516,16 @@ export class SpaceScene extends Phaser.Scene {
     gfx.lineStyle(1, 0x88ccff, 0.25)
     for (const slot of this.slotPositions) {
       gfx.strokeCircle(slot.x, slot.y, 8)
+    }
+  }
+
+  private initHangars(): void {
+    this.hangarPositions = computeHangarBays(BASE_X, BASE_Y)
+    this.hangarOccupants = Array(HANGAR_BAY_COUNT).fill(null)
+    const gfx = this.add.graphics()
+    gfx.lineStyle(1, 0xffaa44, 0.30)
+    for (const bay of this.hangarPositions) {
+      gfx.strokeCircle(bay.x, bay.y, 12)
     }
   }
 
@@ -514,6 +548,33 @@ export class SpaceScene extends Phaser.Scene {
   private departShipForBase(ship: Ship): void {
     const slot = this.assignDockSlot(ship)
     ship.departForBase(slot ?? undefined)
+  }
+
+  private assignHangarSlot(ship: Ship): HangarPosition | null {
+    const idx = this.hangarOccupants.findIndex(occ => occ === null)
+    if (idx < 0) return null
+    this.hangarOccupants[idx] = ship.id
+    ship.hangarSlotIndex = idx
+    return this.hangarPositions[idx]
+  }
+
+  private releaseHangarSlot(ship: Ship): void {
+    const idx = ship.hangarSlotIndex
+    if (idx !== null && idx >= 0 && idx < this.hangarOccupants.length) {
+      this.hangarOccupants[idx] = null
+    }
+    ship.hangarSlotIndex = null
+  }
+
+  beginHangarService(ship: Ship, baseDuration: number): boolean {
+    const slotPos = this.assignHangarSlot(ship)
+    if (slotPos === null) return false
+    const isOwnedBay = ship.hangarSlotIndex !== null && ship.hangarSlotIndex < this.base.ownedHangarCount
+    const duration = (isOwnedBay && this.base.hangarPressurized)
+      ? baseDuration * HANGAR_PRESSURIZED_FACTOR
+      : baseDuration
+    ship.enterHangar(slotPos, duration)
+    return true
   }
 
   private spawnStarterShip(): void {
@@ -548,6 +609,10 @@ export class SpaceScene extends Phaser.Scene {
     ship.on('unload-complete', () => {
       this.base.chargeDockFee(ship.dockSlotIndex)
       this.releaseDockSlot(ship)
+    })
+    ship.on('hangar-service-complete', () => {
+      this.base.chargeHangarFee(ship.hangarSlotIndex)
+      this.releaseHangarSlot(ship)
     })
   }
 
@@ -1714,7 +1779,7 @@ export class SpaceScene extends Phaser.Scene {
     for (const ship of this.ships) {
       const s = ship.shipState
       if (s === 'idle' || s === 'moving') idle++
-      else if (s === 'traveling-to-base' || s === 'unloading') returning++
+      else if (s === 'traveling-to-base' || s === 'unloading' || s === 'in-hangar') returning++
       else active++
     }
     fleetSummary.set({ idle, active, returning })

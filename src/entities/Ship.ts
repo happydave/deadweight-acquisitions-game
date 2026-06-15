@@ -58,6 +58,8 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   attachUnloadTimer: number = 0
   waitOrbitalAngle: number | null = null
   dockSlotIndex: number | null = null
+  hangarSlotIndex: number | null = null
+  hangarServiceTimer: number = 0
   minerTarget: AutoMiner | null = null
   collectSlotProgress: Map<number, number> = new Map()
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
@@ -130,6 +132,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
           this.pushToStore()
         })
         break
+      case 'in-hangar':
+        this.setVelocity(0, 0)
+        this.updateHangarService(dt)
+        break
       case 'deploying-miner':
       case 'waiting-at-asteroid':
       case 'collecting-nets':
@@ -139,6 +145,24 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         break
       case 'idle':
         break
+    }
+  }
+
+  enterHangar(slotPos: { x: number; y: number }, duration: number): void {
+    this.setPosition(slotPos.x, slotPos.y)
+    this.hangarServiceTimer = duration
+    this.shipState = 'in-hangar'
+    this.setVelocity(0, 0)
+    this.pushToStore()
+  }
+
+  private updateHangarService(dt: number): void {
+    this.hangarServiceTimer -= dt
+    if (this.hangarServiceTimer <= 0) {
+      this.hangarServiceTimer = 0
+      this.shipState = 'idle'
+      this.pushToStore()
+      this.emit('hangar-service-complete')
     }
   }
 

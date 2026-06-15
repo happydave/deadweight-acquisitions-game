@@ -180,6 +180,23 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 13:
+      // v13 → v14: add hangarSlotIndex and hangarServiceTimer to ships; add ownedHangarCount and hangarPressurized to base
+      raw = {
+        ...raw,
+        schemaVersion: 14,
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          hangarSlotIndex: null,
+          hangarServiceTimer: 0,
+        })),
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          ownedHangarCount: 0,
+          hangarPressurized: false,
+        },
+      } as unknown as SaveState
+      // falls through
+    case 14:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

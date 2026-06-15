@@ -54,12 +54,16 @@ export interface ShipSnapshot {
   attachUnloadTimer: number
   waitOrbitalAngle: number | null
   dockSlotIndex: number | null
+  hangarSlotIndex: number | null
+  hangarServiceTimer: number
 }
 
 export interface BaseSnapshot {
   storage: Partial<Record<ResourceType, number>>
   credits: number
   ownedDockCount: number
+  ownedHangarCount: number
+  hangarPressurized: boolean
 }
 
 export interface SaveState {
@@ -77,7 +81,7 @@ export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, credits: 0, ownedDockCount: 0 },
+  base: { storage: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false },
   asteroids: [],
   ships: [],
   autoMiners: [],

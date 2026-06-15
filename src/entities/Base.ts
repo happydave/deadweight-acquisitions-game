@@ -32,6 +32,8 @@ export class Base extends Phaser.GameObjects.Image {
   credits: number
   readonly ships: string[]
   ownedDockCount: number
+  ownedHangarCount: number
+  hangarPressurized: boolean
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -40,6 +42,8 @@ export class Base extends Phaser.GameObjects.Image {
     this.credits = STARTING_CREDITS
     this.ships = []
     this.ownedDockCount = 0
+    this.ownedHangarCount = 0
+    this.hangarPressurized = false
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -83,6 +87,13 @@ export class Base extends Phaser.GameObjects.Image {
     if (dockSlotIndex === null) return
     if (dockSlotIndex < this.ownedDockCount) return  // owned dock — no fee
     this.credits -= getPrice('dock-cargo-drop')
+    this.pushToStore()
+  }
+
+  chargeHangarFee(hangarSlotIndex: number | null): void {
+    if (hangarSlotIndex === null) return
+    if (hangarSlotIndex < this.ownedHangarCount) return  // owned hangar — no fee
+    this.credits -= getPrice('hangar-service')
     this.pushToStore()
   }
 
