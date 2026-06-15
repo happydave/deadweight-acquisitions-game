@@ -146,6 +146,18 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 10:
+      // v10 → v11: clear legacy cargoContents; pre-satisfy unloadTimer for ships saved mid-unload
+      raw = {
+        ...raw,
+        schemaVersion: 11,
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          cargoContents: {},
+          unloadTimer: s['shipState'] === 'unloading' ? 3 : s['unloadTimer'],
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 11:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

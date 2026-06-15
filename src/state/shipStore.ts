@@ -25,6 +25,7 @@ export interface SelectedShipData {
   attachmentPoints: AttachmentPoint[]
   unloadProgress: number
   attachUnloadProgress: number
+  collectSlotProgress: Record<number, number>
 }
 
 export interface SelectedAsteroidData {

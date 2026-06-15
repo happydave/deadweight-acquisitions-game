@@ -65,15 +65,15 @@ const NOTIFICATION_DURATION_MS = 4000
 const WORLD_SIZE = 8500
 const MAX_ZOOM = 2
 const PAN_SPEED = 500 // world units per second
-const STAR_TEXTURE_SIZE = 512
+const STAR_TEXTURE_SIZE = 2048
 const BASE_X = 0
 const BASE_Y = 650   // GEO orbit south of planet (planet center at 0,0)
 const AUTO_SAVE_INTERVAL = 60 // real-world seconds
 
 const STAR_LAYERS = [
-  { key: 'stars-far',  count: 22, parallax: 0.07, brightMin: 120, largeChance: 0.00 },
-  { key: 'stars-mid',  count: 15, parallax: 0.10, brightMin: 160, largeChance: 0.00 },
-  { key: 'stars-near', count:  8, parallax: 0.14, brightMin: 200, largeChance: 0.40 },
+  { key: 'stars-far',  count: 88, parallax: 0.07, brightMin: 120, largeChance: 0.00 },
+  { key: 'stars-mid',  count: 60, parallax: 0.10, brightMin: 160, largeChance: 0.00 },
+  { key: 'stars-near', count: 32, parallax: 0.14, brightMin: 200, largeChance: 0.40 },
 ] as const
 
 const SELECTION_RING_COLOR = 0x44ffaa
@@ -369,7 +369,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 10,
+      schemaVersion: 11,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -526,10 +526,12 @@ export class SpaceScene extends Phaser.Scene {
       return net?.state === 'full-tethered'
     })
 
-    const emptyMediumSlots = ship.attachmentPoints.filter(
-      ap => ap.size === 'medium' && ap.payload === null,
-    )
-    const collectCount = Math.min(fullNetIds.length, emptyMediumSlots.length)
+    // Build indexed list of empty medium slots so we can track progress per slot
+    const emptyMediumSlotPairs = ship.attachmentPoints
+      .map((ap, idx) => ({ ap, idx }))
+      .filter(({ ap }) => ap.size === 'medium' && ap.payload === null)
+
+    const collectCount = Math.min(fullNetIds.length, emptyMediumSlotPairs.length)
 
     if (collectCount === 0) {
       complete()
@@ -538,15 +540,20 @@ export class SpaceScene extends Phaser.Scene {
 
     // Pre-assign medium slots to prevent double-booking
     for (let i = 0; i < collectCount; i++) {
-      emptyMediumSlots[i].payload = { kind: 'cargo-net', netId: fullNetIds[i] }
+      emptyMediumSlotPairs[i].ap.payload = { kind: 'cargo-net', netId: fullNetIds[i] }
     }
 
+    // beginCollecting clears collectSlotProgress; init progress entries after the call
     ship.beginCollecting()
+    for (let i = 0; i < collectCount; i++) {
+      ship.collectSlotProgress.set(emptyMediumSlotPairs[i].idx, 0)
+    }
 
     let pending = collectCount
     for (let i = 0; i < collectCount; i++) {
       const netId = fullNetIds[i]
       const net = this.cargoNetMap.get(netId)!
+      const slotIdx = emptyMediumSlotPairs[i].idx
       this.tweens.add({
         targets: net,
         x: ship.x,
@@ -554,6 +561,10 @@ export class SpaceScene extends Phaser.Scene {
         delay: i * NET_COLLECT_DURATION_MS,
         duration: NET_COLLECT_DURATION_MS,
         ease: 'Power2',
+        onUpdate: (tween) => {
+          ship.collectSlotProgress.set(slotIdx, tween.progress)
+          ship.pushToStore()
+        },
         onComplete: () => {
           // Apply leakage exactly once at full-tethered → in-transit transition
           net.quantity = Math.floor(net.quantity * (1 - NET_LEAKAGE_FRACTION))
@@ -637,10 +648,37 @@ export class SpaceScene extends Phaser.Scene {
 
       if (miner.state === 'standby-beaconing') {
         this.dispatchToAsteroid(asteroid)
+      } else if (miner.state === 'net-starved') {
+        this.dispatchToAsteroid(asteroid)
       } else if (miner.state === 'mining' || miner.state === 'ejecting-net') {
         const fullNets = miner.tetheredNetIds.filter(id => this.cargoNetMap.get(id)?.state === 'full-tethered')
         if (fullNets.length > 0) this.dispatchToAsteroid(asteroid)
       }
+    }
+
+    // Deploy pending miners: dispatch idle ships that carry in-transit miners to the nearest asteroid.
+    // This unblocks ships that filled both M slots via sequential beacon-recovery trips.
+    for (const ship of this.ships) {
+      if (ship.shipState !== 'idle') continue
+      const hasInTransitMiner = ship.attachmentPoints.some(
+        ap => ap.payload?.kind === 'auto-miner' &&
+              this.autoMinerMap.get(ap.payload.minerId)?.state === 'in-transit',
+      )
+      if (!hasInTransitMiner) continue
+
+      const nearest = this.asteroids
+        .filter(a => !this.ships.some(s => s.asteroidTarget?.id === a.id))
+        .reduce<Asteroid | null>((best, a) => {
+          if (!best) return a
+          return Phaser.Math.Distance.Between(ship.x, ship.y, a.x, a.y) <
+                 Phaser.Math.Distance.Between(ship.x, ship.y, best.x, best.y) ? a : best
+        }, null)
+      if (!nearest) continue
+
+      ship.asteroidTarget = nearest
+      ship.target = { x: nearest.x, y: nearest.y }
+      ship.shipState = 'traveling-to-asteroid'
+      ship.pushToStore()
     }
   }
 
@@ -663,6 +701,9 @@ export class SpaceScene extends Phaser.Scene {
     miner.asteroidId = null
     miner.state = 'in-transit'
     miner.setVisible(false)
+    for (const netId of miner.tetheredNetIds) {
+      this.cargoNetMap.get(netId)?.setVisible(false)
+    }
     miner.stopBeacon()
     activeBeacons.update(beacons => beacons.filter(b => b.id !== miner.id))
     miner.pushToStore()
@@ -674,9 +715,10 @@ export class SpaceScene extends Phaser.Scene {
     this.tetherGfx.clear()
     this.tetherGfx.lineStyle(1, TETHER_LINE_COLOR, TETHER_LINE_ALPHA)
     for (const miner of this.autoMiners) {
+      if (!miner.visible) continue
       for (const netId of miner.tetheredNetIds) {
         const net = this.cargoNetMap.get(netId)
-        if (net) {
+        if (net && net.visible) {
           this.tetherGfx.lineBetween(miner.x, miner.y, net.x, net.y)
         }
       }
@@ -1020,6 +1062,20 @@ export class SpaceScene extends Phaser.Scene {
     miner.freeOrbitalAngle = asteroid.orbitalAngle
     miner.asteroidId = null
 
+    // Detach any other miners still referencing this asteroid (e.g. net-starved, attaching, drifting).
+    // Must run before asteroid.destroy() so orbitalRadius/Angle are still valid.
+    for (const otherMiner of this.autoMiners) {
+      if (otherMiner === miner || otherMiner.asteroidId !== asteroid.id) continue
+      otherMiner.freeOrbitalRadius = asteroid.orbitalRadius
+      otherMiner.freeOrbitalAngle = asteroid.orbitalAngle
+      otherMiner.asteroidId = null
+      if (otherMiner.state !== 'standby-beaconing') {
+        otherMiner.state = 'standby-beaconing'
+        otherMiner.startBeacon()
+      }
+      otherMiner.pushToStore()
+    }
+
     // Cancel ships traveling to this asteroid
     for (const ship of this.ships) {
       if (ship.asteroidTarget?.id === asteroid.id && ship.shipState === 'traveling-to-asteroid') {
@@ -1051,6 +1107,9 @@ export class SpaceScene extends Phaser.Scene {
       miner.freeOrbitalAngle = null
       miner.state = 'in-transit'
       miner.setVisible(false)
+      for (const netId of miner.tetheredNetIds) {
+        this.cargoNetMap.get(netId)?.setVisible(false)
+      }
       miner.stopBeacon()
       activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
     }
@@ -1525,6 +1584,17 @@ export class SpaceScene extends Phaser.Scene {
       )
       if (!waitingShip) continue
 
+      // Attachment-time capacity check: ship must have at least one free medium slot before
+      // attempting any collection or recovery. If full, depart immediately so a capable ship
+      // can be dispatched on the next autoDispatch tick.
+      const hasFreeMediumSlot = waitingShip.attachmentPoints.some(
+        ap => ap.size === 'medium' && ap.payload === null,
+      )
+      if (!hasFreeMediumSlot) {
+        waitingShip.departForBase()
+        continue
+      }
+
       if (miner.state === 'net-starved') {
         // Resupply takes priority over collection when NetStore has nets
         const netStoreSlot = waitingShip.attachmentPoints.find(ap => ap.payload?.kind === 'net-store')
@@ -1540,7 +1610,7 @@ export class SpaceScene extends Phaser.Scene {
           freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
           this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
         } else {
-          this.beginCollecting(waitingShip, miner)
+          waitingShip.departForBase()
         }
       } else if (miner.state === 'mining' || miner.state === 'ejecting-net') {
         const fullNets = miner.tetheredNetIds.filter(id => this.cargoNetMap.get(id)?.state === 'full-tethered')

@@ -58,6 +58,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   attachUnloadTimer: number = 0
   waitOrbitalAngle: number | null = null
   minerTarget: AutoMiner | null = null
+  collectSlotProgress: Map<number, number> = new Map()
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
   isSelected: boolean
@@ -178,12 +179,14 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   }
 
   beginCollecting(): void {
+    this.collectSlotProgress.clear()
     this.shipState = 'collecting-nets'
     this.setVelocity(0, 0)
     this.pushToStore()
   }
 
   departForBase(): void {
+    this.collectSlotProgress.clear()
     this.shipState = 'traveling-to-base'
     this.target = { ...this.basePosition }
     this.asteroidTarget = null
@@ -195,10 +198,15 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private beginUnloading(): void {
     this.emit('begin-unloading')
     this.shipState = 'unloading'
-    this.unloadTimer = 0
     this.target = null
-    this.progressBarGfx = this.scene.add.graphics()
-    this.progressBarGfx.setDepth(this.depth + 1)
+    const hasCargoContents = Object.values(this.cargoContents).some(v => (v ?? 0) > 0)
+    if (hasCargoContents) {
+      this.unloadTimer = 0
+      this.progressBarGfx = this.scene.add.graphics()
+      this.progressBarGfx.setDepth(this.depth + 1)
+    } else {
+      this.unloadTimer = UNLOAD_DURATION
+    }
     const hasAttachNets = this.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net')
     if (hasAttachNets) {
       this.attachUnloadTimer = 0
@@ -298,6 +306,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         ? Math.min(this.unloadTimer / UNLOAD_DURATION, 1)
         : 0,
       attachUnloadProgress: Math.min(this.attachUnloadTimer / ATTACHMENT_UNLOAD_DURATION, 1),
+      collectSlotProgress: Object.fromEntries(this.collectSlotProgress) as Record<number, number>,
     })
   }
 }

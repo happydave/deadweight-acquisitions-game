@@ -80,9 +80,11 @@
           <div class="attach-bar-fill" style="width: {$selectedShip.attachUnloadProgress * 100}%"></div>
         </div>
       {/if}
-      <div class="unload-bar-track">
-        <div class="unload-bar-fill" style="width: {$selectedShip.unloadProgress * 100}%"></div>
-      </div>
+      {#if $selectedShip.unloadProgress < 1}
+        <div class="unload-bar-track">
+          <div class="unload-bar-fill" style="width: {$selectedShip.unloadProgress * 100}%"></div>
+        </div>
+      {/if}
     {/if}
     <div class="row">
       <span class="label">Cargo</span>
@@ -100,6 +102,11 @@
         <span class="ap-slot">{i + 1} [{slotLabel(ap.size)}]</span>
         <span class="ap-payload payload-{ap.payload?.kind ?? 'empty'}">{payloadLabel(ap.payload as { kind: string; currentNets?: number; maxNets?: number } | null)}</span>
       </div>
+      {#if $selectedShip.state === 'collecting-nets' && $selectedShip.collectSlotProgress[i] !== undefined}
+        <div class="collect-bar-track">
+          <div class="collect-bar-fill" style="width: {$selectedShip.collectSlotProgress[i] * 100}%"></div>
+        </div>
+      {/if}
     {/each}
   </div>
 {:else if $selectedAsteroid}
@@ -180,6 +187,21 @@
   .attach-bar-fill {
     height: 100%;
     background: #ffaa44;
+    border-radius: 2px;
+    transition: width 0.05s linear;
+  }
+
+  .collect-bar-track {
+    height: 4px;
+    background: rgba(30, 50, 80, 0.8);
+    border-radius: 2px;
+    margin: -2px 0 4px 4px;
+    overflow: hidden;
+  }
+
+  .collect-bar-fill {
+    height: 100%;
+    background: #ffcc44;
     border-radius: 2px;
     transition: width 0.05s linear;
   }
