@@ -2,6 +2,7 @@
   import { baseState } from '../state/baseStore'
   import { fleetSummary } from '../state/fleetStore'
   import { commandQueue } from '../state/commandStore'
+  import { autoMinerSummary, activeBeacons } from '../state/autoMinerStore'
 
   let saveLabel = 'Save'
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -53,6 +54,41 @@
     <span class="hud-key">Returning</span>
     <span class="hud-val">{$fleetSummary.returning}</span>
   </div>
+  {#if $autoMinerSummary.mining > 0 || $autoMinerSummary.netStarved > 0 || $autoMinerSummary.beaconing > 0 || $autoMinerSummary.dark > 0}
+    <div class="hud-row hud-section">
+      <span class="hud-key">Miners</span>
+    </div>
+    {#if $autoMinerSummary.mining > 0}
+      <div class="hud-row hud-indent">
+        <span class="hud-key miner-mining">Mining</span>
+        <span class="hud-val">{$autoMinerSummary.mining}</span>
+      </div>
+    {/if}
+    {#if $autoMinerSummary.netStarved > 0}
+      <div class="hud-row hud-indent">
+        <span class="hud-key miner-starved">Net-starved</span>
+        <span class="hud-val">{$autoMinerSummary.netStarved}</span>
+      </div>
+    {/if}
+    {#if $autoMinerSummary.beaconing > 0}
+      <div class="hud-row hud-indent">
+        <span class="hud-key miner-beaconing">Beaconing</span>
+        <span class="hud-val">{$autoMinerSummary.beaconing}</span>
+      </div>
+    {/if}
+    {#if $autoMinerSummary.dark > 0}
+      <div class="hud-row hud-indent">
+        <span class="hud-key miner-dark">Dark</span>
+        <span class="hud-val">{$autoMinerSummary.dark}</span>
+      </div>
+    {/if}
+  {/if}
+  {#each $activeBeacons as beacon (beacon.id)}
+    <div class="hud-row hud-section beacon-alert">
+      <span class="hud-key miner-beaconing">Beacon</span>
+      <button class="dispatch-btn" on:click={() => commandQueue.update(q => [...q, { type: 'respondToBeacon', minerId: beacon.id }])}>Dispatch</button>
+    </div>
+  {/each}
   <div class="hud-row hud-section">
     <button class="save-btn" on:click={manualSave}>{saveLabel}</button>
   </div>
@@ -121,5 +157,32 @@
   .save-btn:hover {
     color: #aaccee;
     border-color: #4a7aaa;
+  }
+
+  .miner-mining   { color: #88ccee; }
+  .miner-starved  { color: #cc8844; }
+  .miner-beaconing { color: #ffaa44; }
+  .miner-dark     { color: #556677; }
+
+  .beacon-alert {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dispatch-btn {
+    pointer-events: auto;
+    background: rgba(40, 30, 10, 0.8);
+    border: 1px solid #aa7722;
+    border-radius: 3px;
+    color: #ffaa44;
+    font-family: monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 1px 6px;
+  }
+
+  .dispatch-btn:hover {
+    color: #ffcc88;
+    border-color: #ffaa44;
   }
 </style>

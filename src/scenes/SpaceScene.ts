@@ -43,6 +43,7 @@ import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
 import { basePanelOpen } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
+import { activeBeacons, autoMinerSummary, type BeaconData } from '../state/autoMinerStore'
 import { GameSaveService } from '../services/GameSaveService'
 
 const WORLD_SIZE = 8500
@@ -82,6 +83,7 @@ const MINIMAP_COLOR_BASE = 0x88ccff
 const MINIMAP_COLOR_ASTEROID = 0x777788
 const MINIMAP_COLOR_COMPANY = 0x44ffdd
 const MINIMAP_COLOR_SHIP = 0xffee44
+const MINIMAP_COLOR_BEACON = 0xffaa44
 
 export class SpaceScene extends Phaser.Scene {
   private starLayers: Phaser.GameObjects.TileSprite[] = []
@@ -92,6 +94,7 @@ export class SpaceScene extends Phaser.Scene {
   private autoMinerMap: Map<string, AutoMiner> = new Map()
   private cargoNets: CargoNet[] = []
   private cargoNetMap: Map<string, CargoNet> = new Map()
+  private shipMinerRecoveryTargets: Map<string, string> = new Map()
   private base!: Base
   private selectedShip: Ship | null = null
   private selectedAutoMinerEntity: AutoMiner | null = null
@@ -283,8 +286,32 @@ export class SpaceScene extends Phaser.Scene {
         ship.shipState = 'waiting-at-asteroid'
       } else if (ship.shipState === 'resupplying-miner') {
         ship.shipState = 'waiting-at-asteroid'
+      } else if (ship.shipState === 'responding-to-beacon' || ship.shipState === 'loading-miner') {
+        ship.shipState = 'idle'
+        ship.asteroidTarget = null
+        // Clear any pre-assigned auto-miner slot so the miner can re-beacon
+        for (const ap of ship.attachmentPoints) {
+          if (ap.payload?.kind === 'auto-miner') {
+            const miner = this.autoMinerMap.get(ap.payload.minerId)
+            if (miner && miner.state === 'in-transit') {
+              miner.state = 'standby-beaconing'
+              miner.setVisible(true)
+            }
+            ap.payload = null
+          }
+        }
       }
     }
+
+    // Populate active beacons from miners still beaconing after rescue
+    const beaconList: BeaconData[] = []
+    for (const miner of this.autoMiners) {
+      if (miner.state === 'standby-beaconing') {
+        beaconList.push({ id: miner.id, x: miner.x, y: miner.y })
+        miner.startBeacon()
+      }
+    }
+    activeBeacons.set(beaconList)
   }
 
   private buildSaveState(): SaveState {
@@ -420,6 +447,17 @@ export class SpaceScene extends Phaser.Scene {
       this.cargoNets.push(net)
       this.cargoNetMap.set(net.id, net)
     })
+    miner.on('beacon-emitted', (data: BeaconData) => {
+      activeBeacons.update(beacons => {
+        const idx = beacons.findIndex(b => b.id === data.id)
+        if (idx >= 0) {
+          const updated = [...beacons]
+          updated[idx] = data
+          return updated
+        }
+        return [...beacons, data]
+      })
+    })
   }
 
   private beginCollecting(ship: Ship, miner: AutoMiner): void {
@@ -474,16 +512,26 @@ export class SpaceScene extends Phaser.Scene {
 
   private processNetUnloading(ship: Ship): void {
     for (const ap of ship.attachmentPoints) {
-      if (ap.payload?.kind !== 'cargo-net') continue
-      const net = this.cargoNetMap.get(ap.payload.netId)
-      if (net) {
-        this.base.acceptCargo({ [net.resourceType]: net.quantity })
-        this.cargoNetMap.delete(net.id)
-        this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
-        if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
-        net.destroy()
+      if (ap.payload?.kind === 'cargo-net') {
+        const net = this.cargoNetMap.get(ap.payload.netId)
+        if (net) {
+          this.base.acceptCargo({ [net.resourceType]: net.quantity })
+          this.cargoNetMap.delete(net.id)
+          this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
+          if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
+          net.destroy()
+        }
+        ap.payload = null
+      } else if (ap.payload?.kind === 'auto-miner') {
+        const miner = this.autoMinerMap.get(ap.payload.minerId)
+        if (miner) {
+          if (this.selectedAutoMinerEntity === miner) this.selectedAutoMinerEntity = null
+          this.autoMiners = this.autoMiners.filter(m => m.id !== miner.id)
+          this.autoMinerMap.delete(miner.id)
+          miner.destroy()
+        }
+        ap.payload = null
       }
-      ap.payload = null
     }
 
     // Refill NetStore after unload
@@ -627,6 +675,13 @@ export class SpaceScene extends Phaser.Scene {
       this.minimap.fillStyle(MINIMAP_COLOR_SHIP, 1)
       this.minimap.fillCircle(wx(ship.x), wy(ship.y), MINIMAP_DOT_SHIP / zoom)
     }
+
+    for (const miner of this.autoMiners) {
+      if (miner.state === 'standby-beaconing') {
+        this.minimap.fillStyle(MINIMAP_COLOR_BEACON, 1)
+        this.minimap.fillCircle(wx(miner.x), wy(miner.y), MINIMAP_DOT_ASTEROID / zoom)
+      }
+    }
   }
 
   private companyArrivalInterval(): number {
@@ -707,6 +762,8 @@ export class SpaceScene extends Phaser.Scene {
       this.initiateDeployMiner(cmd.haulerId, cmd.asteroidId)
     } else if (cmd.type === 'resupplyMiner') {
       this.initiateResupplyMiner(cmd.minerId)
+    } else if (cmd.type === 'respondToBeacon') {
+      this.initiateRespondToBeacon(cmd.minerId)
     }
   }
 
@@ -759,6 +816,52 @@ export class SpaceScene extends Phaser.Scene {
       ship.shipState = 'waiting-at-asteroid'
       ship.pushToStore()
     })
+  }
+
+  private initiateRespondToBeacon(minerId: string): void {
+    const miner = this.autoMinerMap.get(minerId)
+    if (!miner || miner.state !== 'standby-beaconing') return
+
+    const nearestIdle = this.ships
+      .filter(s => s.shipState === 'idle')
+      .reduce<Ship | null>((best, s) => {
+        if (!best) return s
+        const dBest = Phaser.Math.Distance.Between(best.x, best.y, miner.x, miner.y)
+        const dS = Phaser.Math.Distance.Between(s.x, s.y, miner.x, miner.y)
+        return dS < dBest ? s : best
+      }, null)
+    if (!nearestIdle) return
+
+    const freeSlot = nearestIdle.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+    if (!freeSlot) return
+
+    freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
+    nearestIdle.asteroidTarget = null
+    nearestIdle.target = { x: miner.x, y: miner.y }
+    nearestIdle.shipState = 'responding-to-beacon'
+    nearestIdle.pushToStore()
+    this.shipMinerRecoveryTargets.set(nearestIdle.id, miner.id)
+  }
+
+  private performRecovery(ship: Ship): void {
+    const minerId = this.shipMinerRecoveryTargets.get(ship.id)
+    this.shipMinerRecoveryTargets.delete(ship.id)
+    if (!minerId) {
+      ship.shipState = 'traveling-to-base'
+      ship.target = { x: BASE_X, y: BASE_Y }
+      ship.pushToStore()
+      return
+    }
+    const miner = this.autoMinerMap.get(minerId)
+    if (miner) {
+      miner.state = 'in-transit'
+      miner.setVisible(false)
+      miner.stopBeacon()
+      activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
+    }
+    ship.shipState = 'traveling-to-base'
+    ship.target = { x: BASE_X, y: BASE_Y }
+    ship.pushToStore()
   }
 
   private shipHasMiner(ship: Ship): boolean {
@@ -1064,7 +1167,7 @@ export class SpaceScene extends Phaser.Scene {
 
     // Update deployed miner positions to follow their asteroid
     const deployedStates = new Set<AutoMinerState>([
-      'attaching', 'mining', 'ejecting-net', 'net-starved', 'standby-beaconing',
+      'attaching', 'mining', 'ejecting-net', 'net-starved', 'standby-beaconing', 'dark',
     ])
     for (const miner of this.autoMiners) {
       if (miner.asteroidId && deployedStates.has(miner.state)) {
@@ -1125,11 +1228,23 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'traveling-to-asteroid' && ship.asteroidTarget) {
         ship.target = { x: ship.asteroidTarget.x, y: ship.asteroidTarget.y }
       }
+      // Keep responding-to-beacon target locked to miner's current position
+      if (ship.shipState === 'responding-to-beacon') {
+        const minerId = this.shipMinerRecoveryTargets.get(ship.id)
+        if (minerId) {
+          const miner = this.autoMinerMap.get(minerId)
+          if (miner) ship.target = { x: miner.x, y: miner.y }
+        }
+      }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
       ship.updateSteering(dt)
       // Detect arrival: steerTowardTarget transitioned to deploying-miner
       if (ship.shipState === 'deploying-miner') {
         this.performDeploy(ship)
+      }
+      // Detect arrival: steerTowardTarget transitioned to loading-miner
+      if (ship.shipState === 'loading-miner') {
+        this.performRecovery(ship)
       }
     }
 
@@ -1141,6 +1256,15 @@ export class SpaceScene extends Phaser.Scene {
       else active++
     }
     fleetSummary.set({ idle, active, returning })
+
+    let mining = 0, netStarved = 0, beaconing = 0, dark = 0
+    for (const miner of this.autoMiners) {
+      if (miner.state === 'mining' || miner.state === 'ejecting-net') mining++
+      else if (miner.state === 'net-starved') netStarved++
+      else if (miner.state === 'standby-beaconing') beaconing++
+      else if (miner.state === 'dark') dark++
+    }
+    autoMinerSummary.set({ mining, netStarved, beaconing, dark })
 
     if (this.selectedShip && this.selectionRing) {
       this.drawSelectionRing()

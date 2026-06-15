@@ -13,6 +13,7 @@ export type AutoMinerState =
   | 'ejecting-net'
   | 'net-starved'
   | 'standby-beaconing'
+  | 'dark'
 
 export const MINER_RATE = 5               // resource units per second
 export const NET_CAPACITY = 50            // resource units per net
@@ -20,6 +21,7 @@ export const MINER_INITIAL_NETS = 3       // spare nets transferred on deploy (+
 export const MINER_DEPLOY_DURATION_MS = 2000
 export const MINER_DEPLOY_PROXIMITY = 80  // world units; Hauler arrival threshold
 export const RESUPPLY_DURATION_MS = 1500
+export const BEACON_INTERVAL_MS = 3000
 export const MINER_TEXTURE_KEY = 'autominer'
 
 export function generateAutoMinerTexture(scene: Phaser.Scene): void {
@@ -68,6 +70,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   tetheredNetIds: string[]
   readonly technologyLevel: number
   isSelected: boolean
+  private beaconTimer: Phaser.Time.TimerEvent | null = null
 
   constructor(scene: Phaser.Scene, id?: string) {
     super(scene, 0, 0, MINER_TEXTURE_KEY)
@@ -96,6 +99,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
 
     if (asteroid.currentQuantity <= 0) {
       this.state = 'standby-beaconing'
+      this.startBeacon()
       this.pushToStore()
       return
     }
@@ -139,6 +143,43 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     })
   }
 
+  startBeacon(): void {
+    if (this.beaconTimer) return
+    this.beaconTimer = this.scene.time.addEvent({
+      delay: BEACON_INTERVAL_MS,
+      callback: this.emitPing,
+      callbackScope: this,
+      loop: true,
+    })
+    this.emitPing()
+  }
+
+  stopBeacon(): void {
+    if (this.beaconTimer) {
+      this.beaconTimer.remove()
+      this.beaconTimer = null
+    }
+  }
+
+  private emitPing(): void {
+    const ring = this.scene.add.graphics()
+    const ping = { radius: 0, alpha: 0.9 }
+    this.scene.tweens.add({
+      targets: ping,
+      radius: 24,
+      alpha: 0,
+      duration: 800,
+      ease: 'Power1',
+      onUpdate: () => {
+        ring.clear()
+        ring.lineStyle(1.5, 0xffaa44, ping.alpha)
+        ring.strokeCircle(this.x, this.y, ping.radius)
+      },
+      onComplete: () => ring.destroy(),
+    })
+    this.emit('beacon-emitted', { id: this.id, x: this.x, y: this.y })
+  }
+
   select(): void {
     this.isSelected = true
     this.pushToStore()
@@ -162,6 +203,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   }
 
   destroy(fromScene?: boolean): void {
+    this.stopBeacon()
     if (this.isSelected) selectedAutoMiner.set(null)
     super.destroy(fromScene)
   }

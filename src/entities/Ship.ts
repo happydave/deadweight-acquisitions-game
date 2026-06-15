@@ -111,10 +111,20 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
           this.pushToStore()
         })
         break
+      case 'responding-to-beacon':
+        // SpaceScene updates this.target each frame to the miner's current position.
+        // On arrival, transitions to loading-miner; SpaceScene detects and calls performRecovery.
+        this.steerTowardTarget(dt, MINER_DEPLOY_PROXIMITY, () => {
+          this.setVelocity(0, 0)
+          this.shipState = 'loading-miner'
+          this.pushToStore()
+        })
+        break
       case 'deploying-miner':
       case 'waiting-at-asteroid':
       case 'collecting-nets':
       case 'resupplying-miner':
+      case 'loading-miner':
         this.setVelocity(0, 0)
         break
       case 'idle':
