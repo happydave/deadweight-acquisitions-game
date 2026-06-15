@@ -338,34 +338,41 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private drawMinimap(): void {
-    const mmLeft = this.scale.width - MINIMAP_SIZE - MINIMAP_MARGIN
-    const mmTop = MINIMAP_MARGIN
+    const zoom = this.cameras.main.zoom
+    const hw = this.scale.width / 2
+    const hh = this.scale.height / 2
+    const targetX = this.scale.width - MINIMAP_SIZE - MINIMAP_MARGIN
+    const targetY = MINIMAP_MARGIN
+    const drawX = hw + (targetX - hw) / zoom
+    const drawY = hh + (targetY - hh) / zoom
+    const drawSize = MINIMAP_SIZE / zoom
 
     this.minimap.clear()
 
     this.minimap.fillStyle(MINIMAP_COLOR_BG, MINIMAP_ALPHA)
-    this.minimap.fillRect(mmLeft, mmTop, MINIMAP_SIZE, MINIMAP_SIZE)
-    this.minimap.lineStyle(1, MINIMAP_COLOR_BORDER, 0.9)
-    this.minimap.strokeRect(mmLeft, mmTop, MINIMAP_SIZE, MINIMAP_SIZE)
+    this.minimap.fillRect(drawX, drawY, drawSize, drawSize)
+    this.minimap.lineStyle(1 / zoom, MINIMAP_COLOR_BORDER, 0.9)
+    this.minimap.strokeRect(drawX, drawY, drawSize, drawSize)
 
-    const wx = (worldX: number) => mmLeft + (worldX / WORLD_SIZE + 0.5) * MINIMAP_SIZE
-    const wy = (worldY: number) => mmTop + (worldY / WORLD_SIZE + 0.5) * MINIMAP_SIZE
+    const wx = (worldX: number) => drawX + (worldX / WORLD_SIZE + 0.5) * drawSize
+    const wy = (worldY: number) => drawY + (worldY / WORLD_SIZE + 0.5) * drawSize
 
     this.minimap.fillStyle(MINIMAP_COLOR_PLANET, 0.9)
-    this.minimap.fillCircle(wx(0), wy(0), MINIMAP_DOT_PLANET)
+    this.minimap.fillCircle(wx(0), wy(0), MINIMAP_DOT_PLANET / zoom)
 
     this.minimap.fillStyle(MINIMAP_COLOR_BASE, 1)
-    this.minimap.fillRect(wx(BASE_X) - MINIMAP_DOT_BASE / 2, wy(BASE_Y) - MINIMAP_DOT_BASE / 2, MINIMAP_DOT_BASE, MINIMAP_DOT_BASE)
+    const baseHalf = MINIMAP_DOT_BASE / zoom / 2
+    this.minimap.fillRect(wx(BASE_X) - baseHalf, wy(BASE_Y) - baseHalf, MINIMAP_DOT_BASE / zoom, MINIMAP_DOT_BASE / zoom)
 
     for (const asteroid of this.asteroids) {
       const color = asteroid.isCompany ? MINIMAP_COLOR_COMPANY : MINIMAP_COLOR_ASTEROID
       this.minimap.fillStyle(color, 0.85)
-      this.minimap.fillCircle(wx(asteroid.x), wy(asteroid.y), MINIMAP_DOT_ASTEROID)
+      this.minimap.fillCircle(wx(asteroid.x), wy(asteroid.y), MINIMAP_DOT_ASTEROID / zoom)
     }
 
     for (const ship of this.ships) {
       this.minimap.fillStyle(MINIMAP_COLOR_SHIP, 1)
-      this.minimap.fillCircle(wx(ship.x), wy(ship.y), MINIMAP_DOT_SHIP)
+      this.minimap.fillCircle(wx(ship.x), wy(ship.y), MINIMAP_DOT_SHIP / zoom)
     }
   }
 
