@@ -75,6 +75,11 @@
       <span class="value state-{$selectedShip.state}">{$selectedShip.state}</span>
     </div>
     {#if $selectedShip.state === 'unloading'}
+      {#if $selectedShip.attachUnloadProgress < 1}
+        <div class="unload-bar-track">
+          <div class="attach-bar-fill" style="width: {$selectedShip.attachUnloadProgress * 100}%"></div>
+        </div>
+      {/if}
       <div class="unload-bar-track">
         <div class="unload-bar-fill" style="width: {$selectedShip.unloadProgress * 100}%"></div>
       </div>
@@ -168,6 +173,13 @@
   .unload-bar-fill {
     height: 100%;
     background: #88ccff;
+    border-radius: 2px;
+    transition: width 0.05s linear;
+  }
+
+  .attach-bar-fill {
+    height: 100%;
+    background: #ffaa44;
     border-radius: 2px;
     transition: width 0.05s linear;
   }

@@ -296,6 +296,7 @@ export class SpaceScene extends Phaser.Scene {
       ship.target = snap.target
       ship.cargoContents = { ...snap.cargoContents }
       ship.unloadTimer = snap.unloadTimer
+      ship.attachUnloadTimer = snap.attachUnloadTimer
       ship.cargoUpgradeLevel = snap.cargoUpgradeLevel
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[snap.cargoUpgradeLevel]
       ship.attachmentPoints = snap.attachmentPoints
@@ -368,7 +369,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 9,
+      schemaVersion: 10,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -401,6 +402,7 @@ export class SpaceScene extends Phaser.Scene {
         cargoUpgradeLevel: s.cargoUpgradeLevel,
         attachmentPoints: s.attachmentPoints,
         unloadTimer: s.unloadTimer,
+        attachUnloadTimer: s.attachUnloadTimer,
         waitOrbitalAngle: s.waitOrbitalAngle,
       })),
       autoMiners: this.autoMiners.map(m => ({
@@ -495,6 +497,7 @@ export class SpaceScene extends Phaser.Scene {
   private attachShipEvents(ship: Ship): void {
     this.attachShipInput(ship)
     ship.on('begin-unloading', () => this.processNetUnloading(ship))
+    ship.on('attachment-unload-complete', () => this.processAttachmentNets(ship))
   }
 
   private attachMinerEvents(miner: AutoMiner): void {
@@ -569,17 +572,8 @@ export class SpaceScene extends Phaser.Scene {
 
   private processNetUnloading(ship: Ship): void {
     for (const ap of ship.attachmentPoints) {
-      if (ap.payload?.kind === 'cargo-net') {
-        const net = this.cargoNetMap.get(ap.payload.netId)
-        if (net) {
-          this.base.acceptCargo({ [net.resourceType]: net.quantity })
-          this.cargoNetMap.delete(net.id)
-          this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
-          if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
-          net.destroy()
-        }
-        ap.payload = null
-      } else if (ap.payload?.kind === 'auto-miner') {
+      // cargo-net slots are handled by the attachment unload timer (processAttachmentNets)
+      if (ap.payload?.kind === 'auto-miner') {
         const miner = this.autoMinerMap.get(ap.payload.minerId)
         if (miner) {
           for (const netId of miner.tetheredNetIds) {
@@ -603,6 +597,24 @@ export class SpaceScene extends Phaser.Scene {
       netStoreSlot.payload.currentNets = netStoreSlot.payload.maxNets
     }
 
+    this.base.pushToStore()
+    ship.pushToStore()
+  }
+
+  private processAttachmentNets(ship: Ship): void {
+    for (const ap of ship.attachmentPoints) {
+      if (ap.payload?.kind === 'cargo-net') {
+        const net = this.cargoNetMap.get(ap.payload.netId)
+        if (net) {
+          this.base.acceptCargo({ [net.resourceType]: net.quantity })
+          this.cargoNetMap.delete(net.id)
+          this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
+          if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
+          net.destroy()
+        }
+        ap.payload = null
+      }
+    }
     this.base.pushToStore()
     ship.pushToStore()
   }

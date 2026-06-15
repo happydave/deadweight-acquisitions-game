@@ -24,6 +24,7 @@ export interface SelectedShipData {
   cargoContents: Partial<Record<ResourceType, number>>
   attachmentPoints: AttachmentPoint[]
   unloadProgress: number
+  attachUnloadProgress: number
 }
 
 export interface SelectedAsteroidData {

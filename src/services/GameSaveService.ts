@@ -135,6 +135,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 9:
+      // v9 → v10: add attachUnloadTimer to ships
+      raw = {
+        ...raw,
+        schemaVersion: 10,
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          attachUnloadTimer: 0,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 10:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

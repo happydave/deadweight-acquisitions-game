@@ -15,9 +15,12 @@ export const ARRIVAL_RADIUS = 20       // world units — used for base arrival
 export const DRAG_ORDER_THRESHOLD = 5  // screen pixels
 export const UNLOAD_DURATION = 3       // seconds
 
+export const ATTACHMENT_UNLOAD_DURATION = 1.5  // seconds; faster than cargo bay
 export const UNLOAD_BAR_WIDTH = 32
 export const UNLOAD_BAR_HEIGHT = 4
 export const UNLOAD_BAR_Y_OFFSET = 18
+export const ATTACH_BAR_Y_OFFSET = UNLOAD_BAR_Y_OFFSET + UNLOAD_BAR_HEIGHT + 4
+export const ATTACH_BAR_COLOR = 0xffaa44
 
 export const MAX_UPGRADE_LEVEL = 3
 export const CARGO_CAPACITY_TIERS = [200, 350, 550, 800] as const
@@ -52,9 +55,11 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   asteroidTarget: Asteroid | null
   speedMultiplier = 1.0
   unloadTimer: number
+  attachUnloadTimer: number = 0
   waitOrbitalAngle: number | null = null
   minerTarget: AutoMiner | null = null
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
+  private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
   isSelected: boolean
 
   constructor(
@@ -194,10 +199,31 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.target = null
     this.progressBarGfx = this.scene.add.graphics()
     this.progressBarGfx.setDepth(this.depth + 1)
+    const hasAttachNets = this.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net')
+    if (hasAttachNets) {
+      this.attachUnloadTimer = 0
+      this.attachUnloadGfx = this.scene.add.graphics()
+      this.attachUnloadGfx.setDepth(this.depth + 1)
+    } else {
+      this.attachUnloadTimer = ATTACHMENT_UNLOAD_DURATION
+    }
     this.pushToStore()
   }
 
   private updateUnloading(dt: number): void {
+    // Draw attachment net bar (above cargo bar)
+    if (this.attachUnloadGfx !== null) {
+      const fill = Math.min(this.attachUnloadTimer / ATTACHMENT_UNLOAD_DURATION, 1)
+      const barX = this.x - UNLOAD_BAR_WIDTH / 2
+      const barY = this.y - ATTACH_BAR_Y_OFFSET
+      this.attachUnloadGfx.clear()
+      this.attachUnloadGfx.fillStyle(0x222222, 0.7)
+      this.attachUnloadGfx.fillRect(barX, barY, UNLOAD_BAR_WIDTH, UNLOAD_BAR_HEIGHT)
+      this.attachUnloadGfx.fillStyle(ATTACH_BAR_COLOR, 1)
+      this.attachUnloadGfx.fillRect(barX, barY, UNLOAD_BAR_WIDTH * fill, UNLOAD_BAR_HEIGHT)
+    }
+
+    // Draw cargo bay bar
     if (this.progressBarGfx !== null) {
       const fill = Math.min(this.unloadTimer / UNLOAD_DURATION, 1)
       const barX = this.x - UNLOAD_BAR_WIDTH / 2
@@ -211,9 +237,23 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
 
     if (!this.base.canAcceptCargo(this.cargoContents)) return
 
+    // Advance attachment timer
+    if (this.attachUnloadTimer < ATTACHMENT_UNLOAD_DURATION) {
+      this.attachUnloadTimer = Math.min(this.attachUnloadTimer + dt, ATTACHMENT_UNLOAD_DURATION)
+      if (this.attachUnloadTimer >= ATTACHMENT_UNLOAD_DURATION) {
+        if (this.attachUnloadGfx !== null) {
+          this.attachUnloadGfx.destroy()
+          this.attachUnloadGfx = null
+        }
+        this.emit('attachment-unload-complete')
+      }
+    }
+
+    // Advance cargo timer
     this.unloadTimer += dt
     this.pushToStore()
     if (this.unloadTimer < UNLOAD_DURATION) return
+    if (this.attachUnloadTimer < ATTACHMENT_UNLOAD_DURATION) return
 
     this.base.acceptCargo(this.cargoContents)
     this.cargoContents = {}
@@ -227,6 +267,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     if (this.progressBarGfx !== null) {
       this.progressBarGfx.destroy()
       this.progressBarGfx = null
+    }
+    if (this.attachUnloadGfx !== null) {
+      this.attachUnloadGfx.destroy()
+      this.attachUnloadGfx = null
     }
   }
 
@@ -253,6 +297,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       unloadProgress: this.shipState === 'unloading'
         ? Math.min(this.unloadTimer / UNLOAD_DURATION, 1)
         : 0,
+      attachUnloadProgress: Math.min(this.attachUnloadTimer / ATTACHMENT_UNLOAD_DURATION, 1),
     })
   }
 }
