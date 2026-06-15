@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { baseState } from '../state/baseStore'
 import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
+import { AUTOMINER_PURCHASE_COST } from './AutoMiner'
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
@@ -78,6 +79,13 @@ export class Base extends Phaser.GameObjects.Image {
   commissionShip(): boolean {
     if (this.credits < SHIP_COMMISSION_COST) return false
     this.credits -= SHIP_COMMISSION_COST
+    this.pushToStore()
+    return true
+  }
+
+  purchaseMiner(): boolean {
+    if (this.credits < AUTOMINER_PURCHASE_COST) return false
+    this.credits -= AUTOMINER_PURCHASE_COST
     this.pushToStore()
     return true
   }

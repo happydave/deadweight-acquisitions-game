@@ -784,6 +784,8 @@ export class SpaceScene extends Phaser.Scene {
       this.initiateResupplyMiner(cmd.minerId)
     } else if (cmd.type === 'respondToBeacon') {
       this.initiateRespondToBeacon(cmd.minerId)
+    } else if (cmd.type === 'purchaseMiner') {
+      this.performPurchaseMiner(cmd.haulerId)
     }
   }
 
@@ -1058,6 +1060,24 @@ export class SpaceScene extends Phaser.Scene {
     this.ships.push(ship)
     this.base.registerShip(ship.id)
     this.attachShipEvents(ship)
+  }
+
+  private performPurchaseMiner(haulerId: string): void {
+    const ship = this.ships.find(s => s.id === haulerId)
+    if (!ship) return
+    const slot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+    if (!slot) return
+    if (!this.base.purchaseMiner()) return
+
+    const miner = new AutoMiner(this)
+    miner.setPosition(ship.x, ship.y)
+    this.autoMiners.push(miner)
+    this.autoMinerMap.set(miner.id, miner)
+    this.attachMinerEvents(miner)
+
+    const idx = ship.attachmentPoints.indexOf(slot)
+    ship.attachmentPoints[idx] = { ...slot, payload: { kind: 'auto-miner', minerId: miner.id } }
+    ship.pushToStore()
   }
 
   private applyShipUpgrade(shipId: string, stat: 'cargo'): void {

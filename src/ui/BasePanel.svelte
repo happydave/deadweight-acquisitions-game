@@ -4,6 +4,7 @@
   import { selectedShip } from '../state/shipStore'
   import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
   import { SHIP_COMMISSION_COST } from '../entities/Base'
+  import { AUTOMINER_PURCHASE_COST } from '../entities/AutoMiner'
   import {
     MAX_UPGRADE_LEVEL,
     CARGO_CAPACITY_TIERS,
@@ -38,6 +39,11 @@
   function upgradeShip(stat: 'cargo'): void {
     if (!$selectedShip) return
     commandQueue.update(q => [...q, { type: 'upgradeShip', shipId: $selectedShip!.id, stat }])
+  }
+
+  function purchaseMiner(): void {
+    if (!$selectedShip) return
+    commandQueue.update(q => [...q, { type: 'purchaseMiner', haulerId: $selectedShip!.id }])
   }
 </script>
 
@@ -85,6 +91,28 @@
         on:click={commissionShip}
       >Commission</button>
     </div>
+
+    <!-- Equipment -->
+    <div class="section-title">EQUIPMENT</div>
+    {#if $selectedShip}
+      {@const hasFreeSlot = $selectedShip.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload === null)}
+      {@const canBuyMiner = $baseState.credits >= AUTOMINER_PURCHASE_COST && hasFreeSlot}
+      <div class="row shipyard-row" class:disabled={!canBuyMiner}>
+        <span class="label">AutoMiner</span>
+        <span class="price">{AUTOMINER_PURCHASE_COST}cr</span>
+        <button
+          class="commission-btn"
+          disabled={!canBuyMiner}
+          on:click={purchaseMiner}
+        >Buy</button>
+      </div>
+    {:else}
+      <div class="row shipyard-row disabled">
+        <span class="label">AutoMiner</span>
+        <span class="price">{AUTOMINER_PURCHASE_COST}cr</span>
+        <button class="commission-btn" disabled>Buy</button>
+      </div>
+    {/if}
 
     <!-- Upgrades (visible only when a ship is selected) -->
     {#if $selectedShip}

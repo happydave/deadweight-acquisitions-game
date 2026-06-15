@@ -27,6 +27,7 @@ export const ATTACH_FAILURE_PROB = 0.25
 export const ATTACH_MAX_RETRIES = 3
 export const ATTACH_DRIFT_DURATION_MS = 800
 export const ATTACH_RETRY_DELAY_MS = 1800
+export const AUTOMINER_PURCHASE_COST = 300
 export const MINER_TEXTURE_KEY = 'autominer'
 
 export function generateAutoMinerTexture(scene: Phaser.Scene): void {
