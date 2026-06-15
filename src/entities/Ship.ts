@@ -50,6 +50,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   autoCycle: boolean
   speedMultiplier = 1.0
   unloadTimer: number
+  private miningOffset: { x: number; y: number } | null = null
   isSelected: boolean
 
   constructor(
@@ -168,10 +169,20 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private beginMining(): void {
     this.shipState = 'mining'
     this.target = null
+    if (this.miningTarget !== null) {
+      this.miningOffset = { x: this.x - this.miningTarget.x, y: this.y - this.miningTarget.y }
+    }
     this.pushToStore()
   }
 
   private updateMining(dt: number): void {
+    if (this.miningTarget !== null) {
+      if (this.miningOffset === null) {
+        this.miningOffset = { x: this.x - this.miningTarget.x, y: this.y - this.miningTarget.y }
+      }
+      this.body!.reset(this.miningTarget.x + this.miningOffset.x, this.miningTarget.y + this.miningOffset.y)
+    }
+
     if (this.miningTarget === null || this.miningTarget.currentQuantity <= 0) {
       this.departToBase()
       return
@@ -202,6 +213,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   }
 
   private departToBase(): void {
+    this.miningOffset = null
     this.shipState = 'traveling-to-base'
     this.target = { x: this.basePosition.x, y: this.basePosition.y }
     this.pushToStore()
