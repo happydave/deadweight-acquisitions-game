@@ -27,6 +27,7 @@ import {
   CARGO_CAPACITY_TIERS,
   CARGO_UPGRADE_COSTS,
   MAX_UPGRADE_LEVEL,
+  UPGRADE_HANGAR_DURATION,
 } from '../entities/Ship'
 
 import {
@@ -143,6 +144,7 @@ export class SpaceScene extends Phaser.Scene {
   private slotOccupants: Array<string | null> = []
   private hangarPositions: HangarPosition[] = []
   private hangarOccupants: Array<string | null> = []
+  private shipPendingUpgrades: Map<string, 'cargo'> = new Map()
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -613,6 +615,11 @@ export class SpaceScene extends Phaser.Scene {
     ship.on('hangar-service-complete', () => {
       this.base.chargeHangarFee(ship.hangarSlotIndex)
       this.releaseHangarSlot(ship)
+      const pendingStat = this.shipPendingUpgrades.get(ship.id)
+      if (pendingStat) {
+        this.shipPendingUpgrades.delete(ship.id)
+        this.applyUpgradeStat(ship, pendingStat)
+      }
     })
   }
 
@@ -1031,7 +1038,7 @@ export class SpaceScene extends Phaser.Scene {
     } else if (cmd.type === 'manualSave') {
       GameSaveService.save(this.buildSaveState())
     } else if (cmd.type === 'upgradeShip') {
-      this.applyShipUpgrade(cmd.shipId, cmd.stat)
+      this.initiateShipUpgrade(cmd.shipId, cmd.stat)
     } else if (cmd.type === 'deployMiner') {
       this.initiateDeployMiner(cmd.haulerId, cmd.asteroidId)
     } else if (cmd.type === 'resupplyMiner') {
@@ -1415,21 +1422,45 @@ export class SpaceScene extends Phaser.Scene {
     ship.pushToStore()
   }
 
-  private applyShipUpgrade(shipId: string, stat: 'cargo'): void {
+  private initiateShipUpgrade(shipId: string, stat: 'cargo'): void {
     const ship = this.ships.find(s => s.id === shipId)
     if (!ship) return
-
+    if (ship.shipState !== 'idle') return
     if (stat === 'cargo') {
       if (ship.cargoUpgradeLevel >= MAX_UPGRADE_LEVEL) return
       const cost = CARGO_UPGRADE_COSTS[ship.cargoUpgradeLevel]
       if (this.base.credits < cost) return
+      const slotPos = this.assignHangarSlot(ship)
+      if (slotPos === null) return  // no bay available
       this.base.credits -= cost
+      this.base.pushToStore()
+      this.shipPendingUpgrades.set(ship.id, stat)
+      ship.target = { ...slotPos }
+      ship.shipState = 'traveling-to-hangar'
+      ship.pushToStore()
+    }
+  }
+
+  private handleHangarEntry(ship: Ship): void {
+    const slotIdx = ship.hangarSlotIndex
+    if (slotIdx === null) {
+      ship.shipState = 'idle'
+      ship.pushToStore()
+      return
+    }
+    const slotPos = this.hangarPositions[slotIdx]
+    const isOwnedPressurized = slotIdx < this.base.ownedHangarCount && this.base.hangarPressurized
+    const duration = UPGRADE_HANGAR_DURATION * (isOwnedPressurized ? HANGAR_PRESSURIZED_FACTOR : 1)
+    ship.enterHangar(slotPos, duration)
+  }
+
+  private applyUpgradeStat(ship: Ship, stat: 'cargo'): void {
+    if (stat === 'cargo') {
+      if (ship.cargoUpgradeLevel >= MAX_UPGRADE_LEVEL) return
       ship.cargoUpgradeLevel++
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[ship.cargoUpgradeLevel]
     }
-
     ship.pushToStore()
-    this.base.pushToStore()
   }
 
   private setupInput(): void {
@@ -1773,13 +1804,17 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'loading-miner') {
         this.handleLoadingMiner(ship)
       }
+      // Detect arrival: steerTowardTarget transitioned to entering-hangar
+      if (ship.shipState === 'entering-hangar') {
+        this.handleHangarEntry(ship)
+      }
     }
 
     let idle = 0, active = 0, returning = 0
     for (const ship of this.ships) {
       const s = ship.shipState
       if (s === 'idle' || s === 'moving') idle++
-      else if (s === 'traveling-to-base' || s === 'unloading' || s === 'in-hangar') returning++
+      else if (s === 'traveling-to-base' || s === 'unloading' || s === 'in-hangar' || s === 'traveling-to-hangar') returning++
       else active++
     }
     fleetSummary.set({ idle, active, returning })

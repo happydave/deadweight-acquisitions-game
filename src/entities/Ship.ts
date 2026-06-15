@@ -25,6 +25,7 @@ export const ATTACH_BAR_COLOR = 0xffaa44
 export const MAX_UPGRADE_LEVEL = 3
 export const CARGO_CAPACITY_TIERS = [200, 350, 550, 800] as const
 export const CARGO_UPGRADE_COSTS  = [300, 600, 1000]     as const
+export const UPGRADE_HANGAR_DURATION = 6  // seconds; halved by pressurization
 
 export function generateShipTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(SHIP_TEXTURE_KEY)) return
@@ -135,6 +136,16 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       case 'in-hangar':
         this.setVelocity(0, 0)
         this.updateHangarService(dt)
+        break
+      case 'traveling-to-hangar':
+        this.steerTowardTarget(dt, ARRIVAL_RADIUS, () => {
+          this.setVelocity(0, 0)
+          this.shipState = 'entering-hangar'
+          this.pushToStore()
+        })
+        break
+      case 'entering-hangar':
+        this.setVelocity(0, 0)
         break
       case 'deploying-miner':
       case 'waiting-at-asteroid':

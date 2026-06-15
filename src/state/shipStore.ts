@@ -8,6 +8,8 @@ export type ShipState =
   | 'traveling-to-base'
   | 'unloading'
   | 'in-hangar'
+  | 'traveling-to-hangar'
+  | 'entering-hangar'
   | 'traveling-to-asteroid'
   | 'deploying-miner'
   | 'waiting-at-asteroid'
