@@ -48,6 +48,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   heading: number   // degrees, 0 = east
   miningTarget: Asteroid | null
   autoCycle: boolean
+  speedMultiplier = 1.0
   unloadTimer: number
   isSelected: boolean
 
@@ -155,7 +156,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       this.heading + Phaser.Math.Clamp(diff, -maxTurn, maxTurn)
     )
     this.setAngle(this.heading)
-    this.scene.physics.velocityFromAngle(this.heading, SHIP_SPEED, this.body!.velocity)
+    this.scene.physics.velocityFromAngle(this.heading, SHIP_SPEED * this.speedMultiplier, this.body!.velocity)
   }
 
   private arriveIdle(): void {

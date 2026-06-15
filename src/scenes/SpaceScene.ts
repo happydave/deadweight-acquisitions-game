@@ -47,6 +47,11 @@ const SELECTION_RING_COLOR = 0x44ffaa
 const SELECTION_RING_RADIUS = 20
 const SELECTION_RING_ALPHA = 0.8
 
+const PROXIMITY_PLANET_RADIUS = 600
+const PROXIMITY_BASE_RADIUS = 250
+const PROXIMITY_ASTEROID_RADIUS = 120
+const PROXIMITY_MIN_SPEED = 0.25
+
 const MINIMAP_SIZE = 180
 const MINIMAP_MARGIN = 10
 const MINIMAP_ALPHA = 0.65
@@ -337,6 +342,29 @@ export class SpaceScene extends Phaser.Scene {
   private cancelFollowCam(): void {
     this.followCam = false
     this.cameras.main.stopFollow()
+  }
+
+  private computeSpeedMultiplier(ship: Ship): number {
+    let m = 1.0
+
+    const dPlanet = Math.sqrt(ship.x * ship.x + ship.y * ship.y)
+    if (dPlanet < PROXIMITY_PLANET_RADIUS) {
+      m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dPlanet / PROXIMITY_PLANET_RADIUS))
+    }
+
+    const dBase = Phaser.Math.Distance.Between(ship.x, ship.y, BASE_X, BASE_Y)
+    if (dBase < PROXIMITY_BASE_RADIUS) {
+      m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dBase / PROXIMITY_BASE_RADIUS))
+    }
+
+    for (const asteroid of this.asteroids) {
+      const dAst = Phaser.Math.Distance.Between(ship.x, ship.y, asteroid.x, asteroid.y)
+      if (dAst < PROXIMITY_ASTEROID_RADIUS) {
+        m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dAst / PROXIMITY_ASTEROID_RADIUS))
+      }
+    }
+
+    return m
   }
 
   private drawMinimap(): void {
@@ -679,6 +707,7 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     for (const ship of this.ships) {
+      ship.speedMultiplier = this.computeSpeedMultiplier(ship)
       ship.updateSteering(dt)
     }
 
