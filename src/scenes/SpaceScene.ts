@@ -581,12 +581,7 @@ export class SpaceScene extends Phaser.Scene {
             }
           }
           miner.tetheredNetIds = []
-          if (this.selectedAutoMinerEntity === miner) this.selectedAutoMinerEntity = null
-          this.autoMiners = this.autoMiners.filter(m => m.id !== miner.id)
-          this.autoMinerMap.delete(miner.id)
-          miner.destroy()
         }
-        ap.payload = null
       }
     }
 
