@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { baseState } from '../state/baseStore'
 import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
 import { AUTOMINER_PURCHASE_COST } from './AutoMiner'
+import { getPrice } from '../world/pricingSeam'
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
@@ -30,6 +31,7 @@ export class Base extends Phaser.GameObjects.Image {
   storage: Partial<Record<ResourceType, number>>
   credits: number
   readonly ships: string[]
+  ownedDockCount: number
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -37,6 +39,7 @@ export class Base extends Phaser.GameObjects.Image {
     this.storage = {}
     this.credits = STARTING_CREDITS
     this.ships = []
+    this.ownedDockCount = 0
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -73,6 +76,13 @@ export class Base extends Phaser.GameObjects.Image {
     if (qty <= 0) return
     this.storage[type] = 0
     this.credits += qty * RESOURCE_SELL_PRICES[type]
+    this.pushToStore()
+  }
+
+  chargeDockFee(dockSlotIndex: number | null): void {
+    if (dockSlotIndex === null) return
+    if (dockSlotIndex < this.ownedDockCount) return  // owned dock — no fee
+    this.credits -= getPrice('dock-cargo-drop')
     this.pushToStore()
   }
 

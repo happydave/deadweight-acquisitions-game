@@ -169,6 +169,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 12:
+      // v12 → v13: add ownedDockCount to base
+      raw = {
+        ...raw,
+        schemaVersion: 13,
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          ownedDockCount: 0,
+        },
+      } as unknown as SaveState
+      // falls through
+    case 13:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

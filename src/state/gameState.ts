@@ -59,6 +59,7 @@ export interface ShipSnapshot {
 export interface BaseSnapshot {
   storage: Partial<Record<ResourceType, number>>
   credits: number
+  ownedDockCount: number
 }
 
 export interface SaveState {
@@ -76,7 +77,7 @@ export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, credits: 0 },
+  base: { storage: {}, credits: 0, ownedDockCount: 0 },
   asteroids: [],
   ships: [],
   autoMiners: [],

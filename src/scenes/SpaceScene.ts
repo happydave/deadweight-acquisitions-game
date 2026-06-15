@@ -206,6 +206,7 @@ export class SpaceScene extends Phaser.Scene {
     this.base = new Base(this, BASE_X, BASE_Y)
     this.base.storage = { ...save.base.storage }
     this.base.credits = save.base.credits
+    this.base.ownedDockCount = save.base.ownedDockCount ?? 0
     this.base.pushToStore()
 
     this.add
@@ -381,12 +382,13 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 12,
+      schemaVersion: 13,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
         storage: { ...this.base.storage },
         credits: this.base.credits,
+        ownedDockCount: this.base.ownedDockCount,
       },
       asteroids: this.asteroids.map(a => ({
         id: a.id,
@@ -543,7 +545,10 @@ export class SpaceScene extends Phaser.Scene {
     this.attachShipInput(ship)
     ship.on('begin-unloading', () => this.processNetUnloading(ship))
     ship.on('attachment-unload-complete', () => this.processAttachmentNets(ship))
-    ship.on('unload-complete', () => this.releaseDockSlot(ship))
+    ship.on('unload-complete', () => {
+      this.base.chargeDockFee(ship.dockSlotIndex)
+      this.releaseDockSlot(ship)
+    })
   }
 
   private attachMinerEvents(miner: AutoMiner): void {
