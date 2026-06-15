@@ -56,6 +56,7 @@ import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
 import { basePanelOpen } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
+import { designationQueue, type MiningDesignation } from '../state/designationStore'
 import {
   activeBeacons,
   autoMinerSummary,
@@ -145,6 +146,7 @@ export class SpaceScene extends Phaser.Scene {
   private hangarPositions: HangarPosition[] = []
   private hangarOccupants: Array<string | null> = []
   private shipPendingUpgrades: Map<string, 'cargo'> = new Map()
+  private designations: MiningDesignation[] = []
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -401,11 +403,24 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
     activeBeacons.set(beaconList)
+
+    // Restore designations; drop any whose asteroid is gone; demote claimed with missing ship
+    const shipIds = new Set(this.ships.map(s => s.id))
+    const asteroidIds = new Set(this.asteroids.map(a => a.id))
+    this.designations = (save.designations ?? [])
+      .filter(d => asteroidIds.has(d.asteroidId))
+      .map(d => {
+        if (d.status === 'claimed' && d.claimedByShipId !== null && !shipIds.has(d.claimedByShipId)) {
+          return { ...d, status: 'queued' as const, claimedByShipId: null }
+        }
+        return { ...d }
+      })
+    designationQueue.set([...this.designations])
   }
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 15,
+      schemaVersion: 16,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -469,6 +484,12 @@ export class SpaceScene extends Phaser.Scene {
           quantity: n.quantity,
           asteroidId: n.asteroidId,
         })),
+      designations: this.designations.map(d => ({
+        id: d.id,
+        asteroidId: d.asteroidId,
+        status: d.status,
+        claimedByShipId: d.claimedByShipId,
+      })),
     }
   }
 
@@ -1219,6 +1240,9 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
+    // Auto-retire any designations for this depleted asteroid
+    this.retireDesignationsForAsteroid(asteroid.id)
+
     // Remove asteroid from scene
     this.asteroids = this.asteroids.filter(a => a.id !== asteroid.id)
     this.asteroidMap.delete(asteroid.id)
@@ -1480,6 +1504,53 @@ export class SpaceScene extends Phaser.Scene {
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[ship.cargoUpgradeLevel]
     }
     ship.pushToStore()
+  }
+
+  addDesignation(asteroidId: string): void {
+    if (this.designations.some(d => d.asteroidId === asteroidId)) return
+    const entry: MiningDesignation = { id: nanoid(), asteroidId, status: 'queued', claimedByShipId: null }
+    this.designations.push(entry)
+    designationQueue.set([...this.designations])
+  }
+
+  removeDesignation(asteroidId: string): void {
+    this.designations = this.designations.filter(d => d.asteroidId !== asteroidId)
+    designationQueue.set([...this.designations])
+  }
+
+  claimDesignation(id: string, shipId: string): boolean {
+    const entry = this.designations.find(d => d.id === id)
+    if (!entry || entry.status === 'claimed') return false
+    entry.status = 'claimed'
+    entry.claimedByShipId = shipId
+    designationQueue.set([...this.designations])
+    return true
+  }
+
+  releaseDesignation(id: string): void {
+    const idx = this.designations.findIndex(d => d.id === id)
+    if (idx < 0) return
+    const entry = this.designations[idx]
+    if (entry.status !== 'claimed') return
+    this.designations.splice(idx, 1)
+    entry.status = 'queued'
+    entry.claimedByShipId = null
+    this.designations.push(entry)
+    designationQueue.set([...this.designations])
+  }
+
+  fulfillDesignation(id: string): void {
+    const idx = this.designations.findIndex(d => d.id === id)
+    if (idx < 0) return
+    this.designations.splice(idx, 1)
+    designationQueue.set([...this.designations])
+  }
+
+  retireDesignationsForAsteroid(asteroidId: string): void {
+    const had = this.designations.some(d => d.asteroidId === asteroidId)
+    if (!had) return
+    this.designations = this.designations.filter(d => d.asteroidId !== asteroidId)
+    designationQueue.set([...this.designations])
   }
 
   private setupInput(): void {

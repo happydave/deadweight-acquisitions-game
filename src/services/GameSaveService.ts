@@ -209,6 +209,14 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 15:
+      // v15 → v16: add designations array
+      raw = {
+        ...raw,
+        schemaVersion: 16,
+        designations: [],
+      } as unknown as SaveState
+      // falls through
+    case 16:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

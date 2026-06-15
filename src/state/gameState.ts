@@ -68,6 +68,13 @@ export interface BaseSnapshot {
   stationMinerIds: string[]
 }
 
+export interface MiningDesignationSnapshot {
+  id: string
+  asteroidId: string
+  status: 'queued' | 'claimed'
+  claimedByShipId: string | null
+}
+
 export interface SaveState {
   schemaVersion: number
   worldSeed: number
@@ -77,6 +84,7 @@ export interface SaveState {
   ships: ShipSnapshot[]
   autoMiners: AutoMinerSnapshot[]
   cargoNets: CargoNetSnapshot[]
+  designations: MiningDesignationSnapshot[]
 }
 
 export const gameState: SaveState = {
@@ -88,4 +96,5 @@ export const gameState: SaveState = {
   ships: [],
   autoMiners: [],
   cargoNets: [],
+  designations: [],
 }
