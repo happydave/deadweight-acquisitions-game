@@ -46,8 +46,8 @@
     <span class="hud-val">{$fleetSummary.idle}</span>
   </div>
   <div class="hud-row hud-indent">
-    <span class="hud-key">Mining</span>
-    <span class="hud-val">{$fleetSummary.mining}</span>
+    <span class="hud-key">Active</span>
+    <span class="hud-val">{$fleetSummary.active}</span>
   </div>
   <div class="hud-row hud-indent">
     <span class="hud-key">Returning</span>

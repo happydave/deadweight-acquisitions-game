@@ -1,4 +1,5 @@
 import type { SaveState } from '../state/gameState'
+import { makeDefaultLoadout } from '../state/attachmentTypes'
 
 const SAVE_KEY = 'dwa-save'
 
@@ -40,7 +41,39 @@ function migrate(raw: SaveState): SaveState | null {
         })),
       }
       // falls through
-    case 4:
+    case 4: {
+      // v4 → v5: remove mining fields; add attachment points; reset mining states to idle
+      type V4Ship = {
+        miningRate?: unknown
+        miningUpgradeLevel?: unknown
+        miningTargetId?: unknown
+        autoCycle?: unknown
+        shipState?: string
+        target?: unknown
+        [key: string]: unknown
+      }
+      raw = {
+        ...raw,
+        schemaVersion: 5,
+        ships: (raw.ships as unknown as V4Ship[]).map(s => {
+          const { miningRate: _mr, miningUpgradeLevel: _mul, miningTargetId: _mti, autoCycle: _ac, ...rest } = s
+          const shipState = (s.shipState === 'traveling-to-target' || s.shipState === 'mining')
+            ? 'idle'
+            : (s.shipState as string)
+          const target = (s.shipState === 'traveling-to-target' || s.shipState === 'mining')
+            ? null
+            : rest.target
+          return {
+            ...rest,
+            shipState,
+            target,
+            attachmentPoints: makeDefaultLoadout(),
+          }
+        }),
+      } as unknown as SaveState
+      // falls through
+    }
+    case 5:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

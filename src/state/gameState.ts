@@ -1,5 +1,6 @@
 import type { ResourceType, SizeCategory } from '../world/worldConfig'
 import type { ShipState } from './shipStore'
+import type { AttachmentPoint } from './attachmentTypes'
 
 export interface AsteroidSnapshot {
   id: string
@@ -22,13 +23,10 @@ export interface ShipSnapshot {
   heading: number
   shipState: ShipState
   target: { x: number; y: number } | null
-  miningTargetId: string | null
   cargoContents: Partial<Record<ResourceType, number>>
   cargoCapacity: number
-  miningRate: number
   cargoUpgradeLevel: number
-  miningUpgradeLevel: number
-  autoCycle: boolean
+  attachmentPoints: AttachmentPoint[]
   unloadTimer: number
 }
 

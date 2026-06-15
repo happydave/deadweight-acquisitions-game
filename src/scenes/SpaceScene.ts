@@ -17,11 +17,10 @@ import {
   generateShipTexture,
   DRAG_ORDER_THRESHOLD,
   CARGO_CAPACITY_TIERS,
-  MINING_RATE_TIERS,
   CARGO_UPGRADE_COSTS,
-  MINING_UPGRADE_COSTS,
   MAX_UPGRADE_LEVEL,
 } from '../entities/Ship'
+
 import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
@@ -172,37 +171,21 @@ export class SpaceScene extends Phaser.Scene {
       ship.shipState = snap.shipState
       ship.target = snap.target
       ship.cargoContents = { ...snap.cargoContents }
-      ship.autoCycle = snap.autoCycle
       ship.unloadTimer = snap.unloadTimer
       ship.cargoUpgradeLevel = snap.cargoUpgradeLevel
-      ship.miningUpgradeLevel = snap.miningUpgradeLevel
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[snap.cargoUpgradeLevel]
-      ship.miningRate = MINING_RATE_TIERS[snap.miningUpgradeLevel]
+      ship.attachmentPoints = snap.attachmentPoints
       ship.setAngle(snap.heading)
 
       this.ships.push(ship)
       this.base.registerShip(ship.id)
       this.attachShipInput(ship)
     }
-
-    // Resolve miningTargetId → live Asteroid instance
-    for (let i = 0; i < this.ships.length; i++) {
-      const snap = save.ships[i]
-      const ship = this.ships[i]
-      if (snap.miningTargetId !== null) {
-        const asteroid = this.asteroids.find(a => a.id === snap.miningTargetId) ?? null
-        ship.miningTarget = asteroid
-        if (asteroid === null && (ship.shipState === 'traveling-to-target' || ship.shipState === 'mining')) {
-          ship.shipState = 'idle'
-          ship.target = null
-        }
-      }
-    }
   }
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -229,13 +212,10 @@ export class SpaceScene extends Phaser.Scene {
         heading: s.heading,
         shipState: s.shipState,
         target: s.target,
-        miningTargetId: s.miningTarget?.id ?? null,
         cargoContents: { ...s.cargoContents },
         cargoCapacity: s.cargoCapacity,
-        miningRate: s.miningRate,
         cargoUpgradeLevel: s.cargoUpgradeLevel,
-        miningUpgradeLevel: s.miningUpgradeLevel,
-        autoCycle: s.autoCycle,
+        attachmentPoints: s.attachmentPoints,
         unloadTimer: s.unloadTimer,
       })),
     }
@@ -406,18 +386,6 @@ export class SpaceScene extends Phaser.Scene {
     }
   }
 
-  private removeDepletedAsteroids(): void {
-    const depleted = this.asteroids.filter(a => a.currentQuantity <= 0)
-    if (depleted.length === 0) return
-    for (const asteroid of depleted) {
-      for (const ship of this.ships) {
-        ship.notifyTargetDestroyed(asteroid)
-      }
-      asteroid.destroy()
-    }
-    this.asteroids = this.asteroids.filter(a => a.currentQuantity > 0)
-  }
-
   private companyArrivalInterval(): number {
     const natural = this.asteroids.filter(a => !a.isCompany)
     if (natural.length === 0) return COMPANY_ARRIVAL_MIN_INTERVAL
@@ -483,10 +451,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private handleCommand(cmd: GameCommand): void {
-    if (cmd.type === 'toggleAutoCycle') {
-      const ship = this.ships.find(s => s.id === cmd.shipId)
-      if (ship) ship.setAutoCycle(!ship.autoCycle)
-    } else if (cmd.type === 'sellResource') {
+    if (cmd.type === 'sellResource') {
       this.base.sellResource(cmd.resourceType)
     } else if (cmd.type === 'commissionShip') {
       this.commissionNewShip()
@@ -511,7 +476,7 @@ export class SpaceScene extends Phaser.Scene {
     this.attachShipInput(ship)
   }
 
-  private applyShipUpgrade(shipId: string, stat: 'cargo' | 'mining'): void {
+  private applyShipUpgrade(shipId: string, stat: 'cargo'): void {
     const ship = this.ships.find(s => s.id === shipId)
     if (!ship) return
 
@@ -522,13 +487,6 @@ export class SpaceScene extends Phaser.Scene {
       this.base.credits -= cost
       ship.cargoUpgradeLevel++
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[ship.cargoUpgradeLevel]
-    } else {
-      if (ship.miningUpgradeLevel >= MAX_UPGRADE_LEVEL) return
-      const cost = MINING_UPGRADE_COSTS[ship.miningUpgradeLevel]
-      if (this.base.credits < cost) return
-      this.base.credits -= cost
-      ship.miningUpgradeLevel++
-      ship.miningRate = MINING_RATE_TIERS[ship.miningUpgradeLevel]
     }
 
     ship.pushToStore()
@@ -596,12 +554,9 @@ export class SpaceScene extends Phaser.Scene {
             } else {
               const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
               if (hitAsteroid) {
-                if (this.selectedShip) {
-                  this.selectedShip.issueMineOrder(hitAsteroid)
-                } else {
-                  selectedShip.set(null)
-                  hitAsteroid.selectSelf()
-                }
+                // Clicking an asteroid with a ship selected: deploy orders come in WI 406+
+                selectedShip.set(null)
+                hitAsteroid.selectSelf()
               } else {
                 this.clearSelection()
                 basePanelOpen.set(false)
@@ -711,16 +666,14 @@ export class SpaceScene extends Phaser.Scene {
       ship.updateSteering(dt)
     }
 
-    this.removeDepletedAsteroids()
-
-    let idle = 0, mining = 0, returning = 0
+    let idle = 0, active = 0, returning = 0
     for (const ship of this.ships) {
       const s = ship.shipState
       if (s === 'idle' || s === 'moving') idle++
-      else if (s === 'traveling-to-target' || s === 'mining') mining++
-      else returning++
+      else if (s === 'traveling-to-base' || s === 'unloading') returning++
+      else active++
     }
-    fleetSummary.set({ idle, mining, returning })
+    fleetSummary.set({ idle, active, returning })
 
     if (this.selectedShip && this.selectionRing) {
       this.drawSelectionRing()

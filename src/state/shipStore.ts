@@ -1,11 +1,10 @@
 import { writable } from 'svelte/store'
 import type { ResourceType, SizeCategory } from '../world/worldConfig'
+import type { AttachmentPoint } from './attachmentTypes'
 
 export type ShipState =
   | 'idle'
   | 'moving'
-  | 'traveling-to-target'
-  | 'mining'
   | 'traveling-to-base'
   | 'unloading'
 
@@ -14,11 +13,9 @@ export interface SelectedShipData {
   name: string
   state: ShipState
   cargoCapacity: number
-  miningRate: number
   cargoUpgradeLevel: number
-  miningUpgradeLevel: number
   cargoContents: Partial<Record<ResourceType, number>>
-  autoCycle: boolean
+  attachmentPoints: AttachmentPoint[]
   unloadProgress: number
 }
 

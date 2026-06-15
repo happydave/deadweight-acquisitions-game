@@ -1,6 +1,5 @@
 <script lang="ts">
   import { selectedShip, selectedAsteroid } from '../state/shipStore'
-  import { commandQueue } from '../state/commandStore'
 
   function cargoTotal(contents: Record<string, number>): number {
     return Object.values(contents).reduce((sum, n) => sum + n, 0)
@@ -10,9 +9,14 @@
     return Object.entries(contents).filter(([, qty]) => qty > 0)
   }
 
-  function toggleAutoCycle(): void {
-    if (!$selectedShip) return
-    commandQueue.update(q => [...q, { type: 'toggleAutoCycle', shipId: $selectedShip!.id }])
+  function slotLabel(size: string): string {
+    return size === 'small' ? 'S' : 'M'
+  }
+
+  function payloadLabel(payload: { kind: string; currentNets?: number; maxNets?: number } | null): string {
+    if (payload === null) return 'empty'
+    if (payload.kind === 'net-store') return `net-store [${payload.currentNets}/${payload.maxNets}]`
+    return payload.kind
   }
 </script>
 
@@ -38,13 +42,13 @@
         <span class="value">{Math.floor(qty)}</span>
       </div>
     {/each}
-    <button
-      class="btn"
-      class:btn-active={$selectedShip.autoCycle}
-      on:click={toggleAutoCycle}
-    >
-      Auto {$selectedShip.autoCycle ? 'ON' : 'OFF'}
-    </button>
+    <div class="section-label">ATTACHMENT POINTS</div>
+    {#each $selectedShip.attachmentPoints as ap, i}
+      <div class="row ap-row">
+        <span class="ap-slot">{i + 1} [{slotLabel(ap.size)}]</span>
+        <span class="ap-payload payload-{ap.payload?.kind ?? 'empty'}">{payloadLabel(ap.payload as { kind: string; currentNets?: number; maxNets?: number } | null)}</span>
+      </div>
+    {/each}
   </div>
 {:else if $selectedAsteroid}
   <div class="panel">
@@ -69,7 +73,7 @@
     border: 1px solid #2a4a6a;
     border-radius: 4px;
     padding: 12px 16px;
-    min-width: 200px;
+    min-width: 220px;
     font-family: monospace;
     font-size: 12px;
     color: #aaccee;
@@ -121,10 +125,37 @@
     transition: width 0.05s linear;
   }
 
+  .section-label {
+    font-size: 9px;
+    color: #3a6a8a;
+    letter-spacing: 0.08em;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    border-top: 1px solid #1a3a5a;
+    padding-top: 6px;
+  }
+
+  .ap-row {
+    padding-left: 4px;
+    margin-bottom: 3px;
+  }
+
+  .ap-slot {
+    color: #6a8a9a;
+    min-width: 40px;
+  }
+
+  .ap-payload {
+    color: #7a9aaa;
+    font-size: 11px;
+  }
+
+  .payload-net-store {
+    color: #88ddaa;
+  }
+
   .state-idle            { color: #88ffaa; }
   .state-moving          { color: #ffdd88; }
-  .state-traveling-to-target { color: #ffdd88; }
-  .state-mining          { color: #44ffcc; }
   .state-traveling-to-base   { color: #ff9944; }
   .state-unloading       { color: #44aaff; }
 
@@ -132,27 +163,4 @@
   .resource-ice          { color: #99ddff; }
   .resource-silicates    { color: #c8b870; }
   .resource-rare-metals  { color: #cc99ff; }
-
-  .btn {
-    margin-top: 10px;
-    width: 100%;
-    padding: 5px 0;
-    background: rgba(40, 80, 120, 0.6);
-    border: 1px solid #2a5a8a;
-    border-radius: 3px;
-    color: #aaccee;
-    font-family: monospace;
-    font-size: 11px;
-    cursor: pointer;
-  }
-
-  .btn:hover {
-    background: rgba(60, 100, 150, 0.7);
-  }
-
-  .btn-active {
-    background: rgba(30, 80, 50, 0.7);
-    border-color: #44aa66;
-    color: #88ffaa;
-  }
 </style>

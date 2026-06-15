@@ -2,8 +2,8 @@ import { writable } from 'svelte/store'
 
 export interface FleetSummary {
   idle: number
-  mining: number
+  active: number
   returning: number
 }
 
-export const fleetSummary = writable<FleetSummary>({ idle: 0, mining: 0, returning: 0 })
+export const fleetSummary = writable<FleetSummary>({ idle: 0, active: 0, returning: 0 })

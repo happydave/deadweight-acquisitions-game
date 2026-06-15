@@ -7,9 +7,7 @@
   import {
     MAX_UPGRADE_LEVEL,
     CARGO_CAPACITY_TIERS,
-    MINING_RATE_TIERS,
     CARGO_UPGRADE_COSTS,
-    MINING_UPGRADE_COSTS,
   } from '../entities/Ship'
 
   const RESOURCE_LABELS: Record<string, string> = {
@@ -37,7 +35,7 @@
     commandQueue.update(q => [...q, { type: 'commissionShip' }])
   }
 
-  function upgradeShip(stat: 'cargo' | 'mining'): void {
+  function upgradeShip(stat: 'cargo'): void {
     if (!$selectedShip) return
     commandQueue.update(q => [...q, { type: 'upgradeShip', shipId: $selectedShip!.id, stat }])
   }
@@ -91,7 +89,6 @@
     <!-- Upgrades (visible only when a ship is selected) -->
     {#if $selectedShip}
       {@const cargoLvl = $selectedShip.cargoUpgradeLevel}
-      {@const miningLvl = $selectedShip.miningUpgradeLevel}
       <div class="section-title">UPGRADES — {$selectedShip.name}</div>
       <div class="row upgrade-row" class:disabled={cargoLvl >= MAX_UPGRADE_LEVEL || $baseState.credits < CARGO_UPGRADE_COSTS[cargoLvl]}>
         <span class="label">Cargo</span>
@@ -105,23 +102,6 @@
             class="upgrade-btn"
             disabled={$baseState.credits < CARGO_UPGRADE_COSTS[cargoLvl]}
             on:click={() => upgradeShip('cargo')}
-          >Upgrade</button>
-        {:else}
-          <span class="max-label">MAX</span>
-        {/if}
-      </div>
-      <div class="row upgrade-row" class:disabled={miningLvl >= MAX_UPGRADE_LEVEL || $baseState.credits < MINING_UPGRADE_COSTS[miningLvl]}>
-        <span class="label">Mining</span>
-        <span class="upgrade-info">
-          {MINING_RATE_TIERS[miningLvl]}/s
-          {#if miningLvl < MAX_UPGRADE_LEVEL}→ {MINING_RATE_TIERS[miningLvl + 1]}/s{/if}
-        </span>
-        {#if miningLvl < MAX_UPGRADE_LEVEL}
-          <span class="price">{MINING_UPGRADE_COSTS[miningLvl]}cr</span>
-          <button
-            class="upgrade-btn"
-            disabled={$baseState.credits < MINING_UPGRADE_COSTS[miningLvl]}
-            on:click={() => upgradeShip('mining')}
           >Upgrade</button>
         {:else}
           <span class="max-label">MAX</span>
