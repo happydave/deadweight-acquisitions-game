@@ -33,6 +33,12 @@ export class CargoNet extends Phaser.GameObjects.Image {
   quantity: number
   asteroidId: string | null
   isSelected: boolean
+  // Set when the net is orphaned (its miner was recovered without it): the net
+  // free-orbits the planet like a stranded miner and is recoverable via player
+  // "designate for collection". null while tethered to a miner.
+  freeOrbitalRadius: number | null = null
+  freeOrbitalAngle: number | null = null
+  designatedForCollection: boolean = false
 
   constructor(
     scene: Phaser.Scene,
@@ -72,6 +78,8 @@ export class CargoNet extends Phaser.GameObjects.Image {
       state: this.state,
       resourceType: this.resourceType,
       quantity: Math.floor(this.quantity),
+      orphaned: this.freeOrbitalRadius !== null,
+      designatedForCollection: this.designatedForCollection,
     })
   }
 

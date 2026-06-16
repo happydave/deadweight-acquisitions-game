@@ -16,6 +16,7 @@ export type GameCommand =
   | { type: 'purchasePressurization' }
   | { type: 'designateAsteroid'; asteroidId: string }
   | { type: 'undesignateAsteroid'; asteroidId: string }
+  | { type: 'collectNet'; netId: string }
   | { type: 'repairMiner'; minerId: string }
   | { type: 'toggleAutoDesignate' }
   | { type: 'toggleMinerCharge'; shipId: string }

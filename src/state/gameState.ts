@@ -23,6 +23,9 @@ export interface CargoNetSnapshot {
   resourceType: string
   quantity: number
   asteroidId: string | null
+  freeOrbitalRadius: number | null
+  freeOrbitalAngle: number | null
+  designatedForCollection: boolean
 }
 
 export interface AutoMinerSnapshot {

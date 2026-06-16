@@ -49,6 +49,19 @@
       <span class="label">Quantity</span>
       <span class="value">{$selectedCargoNet.quantity}</span>
     </div>
+    {#if $selectedCargoNet.orphaned}
+      {#if $selectedCargoNet.designatedForCollection}
+        <div class="row">
+          <span class="label">Status</span>
+          <span class="value desig-claimed">collection requested</span>
+        </div>
+      {:else}
+        <button
+          class="action-btn"
+          on:click={() => commandQueue.update(q => [...q, { type: 'collectNet', netId: $selectedCargoNet!.id }])}
+        >Designate for Collection</button>
+      {/if}
+    {/if}
   </div>
 {:else if $selectedAutoMiner}
   <div class="panel">

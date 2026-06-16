@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { shipHasFreeMediumSlot, selectDispatchTarget, selectDeployTarget, selectHaulerForDesignation } from './dispatchLogic'
+import { shipHasFreeMediumSlot, selectDispatchTarget, selectHaulerForDesignation } from './dispatchLogic'
 import type { AttachmentPayload } from '../state/attachmentTypes'
 import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
@@ -136,6 +136,8 @@ export class SpaceScene extends Phaser.Scene {
   private cargoNets: CargoNet[] = []
   private cargoNetMap: Map<string, CargoNet> = new Map()
   private shipMinerRecoveryTargets: Map<string, string> = new Map()
+  // shipId -> orphaned cargo-net id the ship is travelling to collect.
+  private shipNetRecoveryTargets: Map<string, string> = new Map()
   // Ships currently performing the timed attach/recovery maneuver (one-shot guard).
   private shipAttachManeuver: Set<string> = new Set()
   // asteroidId -> scene time (ms) until which the asteroid is undeployable after an
@@ -306,7 +308,16 @@ export class SpaceScene extends Phaser.Scene {
         snap.id,
       )
       net.state = snap.state
-      if (snap.asteroidId) {
+      net.designatedForCollection = snap.designatedForCollection ?? false
+      if (snap.freeOrbitalRadius != null && snap.freeOrbitalAngle != null) {
+        // Orphaned net: restore its free-orbit position.
+        net.freeOrbitalRadius = snap.freeOrbitalRadius
+        net.freeOrbitalAngle = snap.freeOrbitalAngle
+        net.setPosition(
+          Math.cos(snap.freeOrbitalAngle) * snap.freeOrbitalRadius,
+          Math.sin(snap.freeOrbitalAngle) * snap.freeOrbitalRadius,
+        )
+      } else if (snap.asteroidId) {
         const asteroid = this.asteroidMap.get(snap.asteroidId)
         if (asteroid) {
           const siblingCount = this.cargoNets.filter(n => n.asteroidId === snap.asteroidId).length
@@ -553,6 +564,9 @@ export class SpaceScene extends Phaser.Scene {
           resourceType: n.resourceType,
           quantity: n.quantity,
           asteroidId: n.asteroidId,
+          freeOrbitalRadius: n.freeOrbitalRadius,
+          freeOrbitalAngle: n.freeOrbitalAngle,
+          designatedForCollection: n.designatedForCollection,
         })),
       designations: this.designations.map(d => ({
         id: d.id,
@@ -885,6 +899,27 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private autoDispatch(): void {
+    // Idle carriers at base: recharge their in-transit miners (so a drained miner
+    // is never redeployed) and store them in station storage when possible. Runs
+    // before dispatch so deployment uses charged miners. Deployment itself is
+    // designation-driven only — there is no auto-deploy to arbitrary asteroids.
+    for (const ship of this.ships) {
+      if (ship.shipState !== 'idle') continue
+      if (Phaser.Math.Distance.Between(ship.x, ship.y, BASE_X, BASE_Y) >= PROXIMITY_BASE_RADIUS) continue
+      for (const ap of ship.attachmentPoints) {
+        if (ap.payload?.kind !== 'auto-miner') continue
+        const miner = this.autoMinerMap.get(ap.payload.minerId)
+        if (!miner || miner.state !== 'in-transit') continue
+        this.rechargeMinerAtStation(miner)
+        if (this.base.storeAutoMiner(miner.id)) {
+          miner.state = 'station-stored'
+          miner.setVisible(false)
+          ap.payload = null
+          miner.pushToStore()
+        }
+      }
+    }
+
     // Reconcile fulfilled designations: if the asteroid still exists but no miner
     // is attached to it any more (recovered, low-battery, or destroyed), revert to
     // queued so a replacement is (re)dispatched. Depleted asteroids are retired
@@ -979,31 +1014,16 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    // Deploy pending miners: dispatch idle ships that carry in-transit miners to the nearest asteroid.
-    // This unblocks ships that filled both M slots via sequential beacon-recovery trips.
-    for (const ship of this.ships) {
-      if (ship.shipState !== 'idle') continue
-      const hasInTransitMiner = ship.attachmentPoints.some(
-        ap => ap.payload?.kind === 'auto-miner' &&
-              this.autoMinerMap.get(ap.payload.minerId)?.state === 'in-transit',
-      )
-      if (!hasInTransitMiner) continue
-
-      const occupiedIds = new Set(
-        this.ships.filter(s => s.asteroidTarget !== null).map(s => s.asteroidTarget!.id),
-      )
-      // Also exclude asteroids in their post-exhaustion undeployable cooldown.
-      for (const asteroid of this.asteroids) {
-        if (this.isAsteroidOnCooldown(asteroid.id)) occupiedIds.add(asteroid.id)
+    // Dispatch haulers to collect player-designated orphaned nets.
+    for (const net of this.cargoNets) {
+      if (net.designatedForCollection && net.freeOrbitalRadius !== null && net.state === 'full-tethered') {
+        this.initiateCollectOrphanNet(net.id)
       }
-      const nearest = selectDeployTarget(this.asteroids, ship, occupiedIds)
-      if (!nearest) continue
-
-      ship.asteroidTarget = nearest
-      ship.target = { x: nearest.x, y: nearest.y }
-      ship.shipState = 'traveling-to-asteroid'
-      ship.pushToStore()
     }
+
+    // (Removed the unconditional "deploy carried miners to nearest asteroid" loop:
+    // deployment is now designation-driven only, and idle carriers recharge/store
+    // their miners at base via the loop at the top of this method.)
   }
 
   private dispatchToAsteroid(asteroid: Asteroid): void {
@@ -1020,9 +1040,8 @@ export class SpaceScene extends Phaser.Scene {
     miner.state = 'in-transit'
     miner.beaconReason = null
     miner.setVisible(false)
-    for (const netId of miner.tetheredNetIds) {
-      this.cargoNetMap.get(netId)?.setVisible(false)
-    }
+    // Any nets that did not fit are orphaned to free-orbit (recoverable), not lost.
+    this.orphanRemainingNets(miner)
     miner.stopBeacon()
     activeBeacons.update(beacons => beacons.filter(b => b.id !== miner.id))
     miner.pushToStore()
@@ -1267,6 +1286,12 @@ export class SpaceScene extends Phaser.Scene {
       this.addDesignation(cmd.asteroidId)
     } else if (cmd.type === 'undesignateAsteroid') {
       this.removeDesignation(cmd.asteroidId)
+    } else if (cmd.type === 'collectNet') {
+      const net = this.cargoNetMap.get(cmd.netId)
+      if (net && net.freeOrbitalRadius !== null && net.state === 'full-tethered') {
+        net.designatedForCollection = true
+        net.pushToStore()
+      }
     } else if (cmd.type === 'repairMiner') {
       this.initiateRepair(cmd.minerId)
     } else if (cmd.type === 'toggleAutoDesignate') {
@@ -1367,7 +1392,65 @@ export class SpaceScene extends Phaser.Scene {
     this.shipMinerRecoveryTargets.set(nearestIdle.id, miner.id)
   }
 
+  /** Dispatches the nearest idle hauler with a free slot to collect an orphaned net. */
+  private initiateCollectOrphanNet(netId: string): void {
+    const net = this.cargoNetMap.get(netId)
+    if (!net || net.freeOrbitalRadius === null || net.state !== 'full-tethered') return
+    // Idempotency: not already being collected.
+    if ([...this.shipNetRecoveryTargets.values()].includes(netId)) return
+
+    const nearestIdle = this.ships
+      .filter(s => s.shipState === 'idle' && shipHasFreeMediumSlot(s))
+      .reduce<Ship | null>((best, s) => {
+        if (!best) return s
+        const dBest = Phaser.Math.Distance.Between(best.x, best.y, net.x, net.y)
+        const dS = Phaser.Math.Distance.Between(s.x, s.y, net.x, net.y)
+        return dS < dBest ? s : best
+      }, null)
+    if (!nearestIdle) return
+
+    if (!this.claimFreeMediumSlot(nearestIdle, { kind: 'reserved', forKind: 'cargo-net', targetId: netId })) return
+
+    nearestIdle.asteroidTarget = null
+    nearestIdle.target = { x: net.x, y: net.y }
+    nearestIdle.shipState = 'responding-to-beacon'
+    nearestIdle.pushToStore()
+    this.shipNetRecoveryTargets.set(nearestIdle.id, netId)
+  }
+
+  /** Collects an orphaned net onto the arriving hauler (resolves its reservation). */
+  private collectOrphanNet(ship: Ship, netId: string): void {
+    const net = this.cargoNetMap.get(netId)
+    if (!net || net.state !== 'full-tethered') {
+      this.departShipForBase(ship)
+      return
+    }
+    if (!this.resolveReservation(ship, netId, { kind: 'cargo-net', netId })) {
+      // No slot available — leave the net orphaned and re-requestable.
+      net.designatedForCollection = false
+      net.pushToStore()
+      this.departShipForBase(ship)
+      return
+    }
+    net.quantity = Math.floor(net.quantity * (1 - NET_LEAKAGE_FRACTION))
+    net.state = 'in-transit'
+    net.freeOrbitalRadius = null
+    net.freeOrbitalAngle = null
+    net.designatedForCollection = false
+    net.setVisible(false)
+    net.pushToStore()
+    this.departShipForBase(ship)
+  }
+
   private handleLoadingMiner(ship: Ship): void {
+    // Orphaned-net collection target takes priority (shares the recovery states).
+    const netId = this.shipNetRecoveryTargets.get(ship.id)
+    if (netId) {
+      this.shipNetRecoveryTargets.delete(ship.id)
+      this.collectOrphanNet(ship, netId)
+      return
+    }
+
     const minerId = this.shipMinerRecoveryTargets.get(ship.id)
     const miner = minerId ? this.autoMinerMap.get(minerId) : null
 
@@ -1390,15 +1473,28 @@ export class SpaceScene extends Phaser.Scene {
     const waitingShip = this.ships.find(
       s => s.shipState === 'waiting-at-asteroid' && s.asteroidTarget?.id === asteroid.id,
     )
+    // If a hauler is loitering here with a free slot, opportunistically recover the
+    // miner (plus as many of its nets as fit; the rest orphan to free-orbit) rather
+    // than abandoning it. Otherwise just collect its nets and leave it beaconing.
+    let minerRecovered = false
     if (waitingShip) {
       waitingShip.asteroidTarget = null
-      this.beginCollecting(waitingShip, miner)
+      const freeSlot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+      if (freeSlot) {
+        freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
+        this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
+        minerRecovered = true
+      } else {
+        this.beginCollecting(waitingShip, miner)
+      }
     }
 
-    // Detach miner into free orbit using asteroid's current orbital parameters
-    miner.freeOrbitalRadius = asteroid.orbitalRadius
-    miner.freeOrbitalAngle = asteroid.orbitalAngle
-    miner.asteroidId = null
+    if (!minerRecovered) {
+      // Detach miner into free orbit using asteroid's current orbital parameters
+      miner.freeOrbitalRadius = asteroid.orbitalRadius
+      miner.freeOrbitalAngle = asteroid.orbitalAngle
+      miner.asteroidId = null
+    }
 
     // Detach any other miners still referencing this asteroid (e.g. net-starved, attaching, drifting).
     // Must run before asteroid.destroy() so orbitalRadius/Angle are still valid.
@@ -1459,9 +1555,8 @@ export class SpaceScene extends Phaser.Scene {
       miner.state = 'in-transit'
       miner.beaconReason = null
       miner.setVisible(false)
-      for (const netId of miner.tetheredNetIds) {
-        this.cargoNetMap.get(netId)?.setVisible(false)
-      }
+      // Any nets that did not fit are orphaned to free-orbit (recoverable), not lost.
+      this.orphanRemainingNets(miner)
       miner.stopBeacon()
       activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
     }
@@ -1932,6 +2027,40 @@ export class SpaceScene extends Phaser.Scene {
     return this.claimFreeMediumSlot(ship, payload)
   }
 
+  /**
+   * Orphans a miner's remaining (uncollected) full-tethered nets when it is
+   * recovered without them: each net is placed in its own free-orbit, kept
+   * visible and full-tethered, and detached from the miner. Orphaned nets are
+   * recoverable via the player "designate for collection" action — never hidden
+   * or destroyed.
+   */
+  private orphanRemainingNets(miner: AutoMiner): void {
+    if (miner.tetheredNetIds.length === 0) return
+    const r = Math.max(Math.hypot(miner.x, miner.y), 1)
+    let a = Math.atan2(miner.y, miner.x)
+    for (const netId of miner.tetheredNetIds) {
+      const net = this.cargoNetMap.get(netId)
+      if (!net) continue
+      net.freeOrbitalRadius = r
+      net.freeOrbitalAngle = a
+      net.asteroidId = null
+      net.setVisible(true)
+      net.setPosition(Math.cos(a) * r, Math.sin(a) * r)
+      net.pushToStore()
+      a += 0.04 // fan out so multiple orphaned nets do not overlap exactly
+    }
+    miner.tetheredNetIds = []
+  }
+
+  /** Recharges a miner's battery to full at the station, charging electricity. */
+  private rechargeMinerAtStation(miner: AutoMiner): void {
+    if (miner.battery >= MINER_BATTERY_MAX) return
+    const deficit = MINER_BATTERY_MAX - miner.battery
+    this.base.credits -= Math.round(deficit * getPrice('electricity-per-battery-unit'))
+    miner.battery = MINER_BATTERY_MAX
+    this.base.pushToStore()
+  }
+
   /** True while the asteroid is in its post-exhaustion undeployable cooldown window. */
   private isAsteroidOnCooldown(asteroidId: string): boolean {
     const until = this.attachCooldowns.get(asteroidId)
@@ -2202,6 +2331,17 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
+    // Update orphaned (free-orbiting) net positions
+    for (const net of this.cargoNets) {
+      if (net.freeOrbitalRadius !== null && net.freeOrbitalAngle !== null) {
+        net.freeOrbitalAngle += (ORBITAL_K / Math.max(net.freeOrbitalRadius, 1) ** 1.5) * dt
+        net.setPosition(
+          Math.cos(net.freeOrbitalAngle) * net.freeOrbitalRadius,
+          Math.sin(net.freeOrbitalAngle) * net.freeOrbitalRadius,
+        )
+      }
+    }
+
     // Update tethered net positions to orbit their miner
     for (const miner of this.autoMiners) {
       const count = miner.tetheredNetIds.length
@@ -2303,12 +2443,17 @@ export class SpaceScene extends Phaser.Scene {
           m.y + Math.sin(ship.waitOrbitalAngle) * SHIP_PARK_RADIUS,
         )
       }
-      // Keep responding-to-beacon target locked to miner's current position
+      // Keep responding-to-beacon target locked to the moving miner/net it recovers
       if (ship.shipState === 'responding-to-beacon') {
         const minerId = this.shipMinerRecoveryTargets.get(ship.id)
         if (minerId) {
           const miner = this.autoMinerMap.get(minerId)
           if (miner) ship.target = { x: miner.x, y: miner.y }
+        }
+        const netId = this.shipNetRecoveryTargets.get(ship.id)
+        if (netId) {
+          const net = this.cargoNetMap.get(netId)
+          if (net) ship.target = { x: net.x, y: net.y }
         }
       }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
