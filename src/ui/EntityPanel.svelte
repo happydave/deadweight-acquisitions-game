@@ -39,7 +39,7 @@
     <div class="name cargonet-name">CARGO NET</div>
     <div class="row">
       <span class="label">State</span>
-      <span class="value state-cn-{$selectedCargoNet.state}">{$selectedCargoNet.state}</span>
+      <span class="value state-cn-{$selectedCargoNet.state}">{$selectedCargoNet.orphaned ? 'untethered' : $selectedCargoNet.state}</span>
     </div>
     <div class="row">
       <span class="label">Resource</span>
