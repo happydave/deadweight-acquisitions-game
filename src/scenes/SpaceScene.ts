@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { shipHasFreeMediumSlot, selectDispatchTarget, selectDeployTarget, selectHaulerForDesignation } from './dispatchLogic'
+import type { AttachmentPayload } from '../state/attachmentTypes'
 import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
 import { generateWorld, generateCompanyAsteroid } from '../world/worldGenerator'
@@ -773,9 +774,11 @@ export class SpaceScene extends Phaser.Scene {
       return
     }
 
-    // Pre-assign medium slots to prevent double-booking
+    // Reserve the target medium slots for the duration of the collection
+    // animation (prevents double-booking); each becomes a real cargo-net payload
+    // when its net's tween completes.
     for (let i = 0; i < collectCount; i++) {
-      emptyMediumSlotPairs[i].ap.payload = { kind: 'cargo-net', netId: fullNetIds[i] }
+      emptyMediumSlotPairs[i].ap.payload = { kind: 'reserved', forKind: 'cargo-net', targetId: fullNetIds[i] }
     }
 
     // beginCollecting clears collectSlotProgress; init progress entries after the call
@@ -788,6 +791,7 @@ export class SpaceScene extends Phaser.Scene {
     for (let i = 0; i < collectCount; i++) {
       const netId = fullNetIds[i]
       const net = this.cargoNetMap.get(netId)!
+      const slot = emptyMediumSlotPairs[i].ap
       const slotIdx = emptyMediumSlotPairs[i].idx
       this.tweens.add({
         targets: net,
@@ -801,6 +805,8 @@ export class SpaceScene extends Phaser.Scene {
           ship.pushToStore()
         },
         onComplete: () => {
+          // Convert the reservation into the real carried-net payload on pickup.
+          slot.payload = { kind: 'cargo-net', netId }
           // Apply leakage exactly once at full-tethered → in-transit transition
           net.quantity = Math.floor(net.quantity * (1 - NET_LEAKAGE_FRACTION))
           net.state = 'in-transit'
@@ -1350,10 +1356,10 @@ export class SpaceScene extends Phaser.Scene {
       }, null)
     if (!nearestIdle) return
 
-    const freeSlot = nearestIdle.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
-    if (!freeSlot) return
+    // Reserve the slot (do not write the real miner payload) until the hauler
+    // actually reaches and recovers the miner.
+    if (!this.claimFreeMediumSlot(nearestIdle, { kind: 'reserved', forKind: 'auto-miner', targetId: miner.id })) return
 
-    freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
     nearestIdle.asteroidTarget = null
     nearestIdle.target = { x: miner.x, y: miner.y }
     nearestIdle.shipState = 'responding-to-beacon'
@@ -1437,6 +1443,17 @@ export class SpaceScene extends Phaser.Scene {
     }
     const miner = this.autoMinerMap.get(minerId)
     if (miner) {
+      // Convert the reservation into the real carried-miner payload on pickup. If
+      // no slot can hold it, leave the miner recoverable (re-beacon) rather than
+      // dropping it.
+      if (!this.resolveReservation(ship, minerId, { kind: 'auto-miner', minerId })) {
+        miner.state = 'standby-beaconing'
+        miner.beaconReason = 'depleted'
+        miner.startBeacon()
+        miner.pushToStore()
+        this.departShipForBase(ship)
+        return
+      }
       miner.freeOrbitalRadius = null
       miner.freeOrbitalAngle = null
       miner.state = 'in-transit'
@@ -1889,6 +1906,32 @@ export class SpaceScene extends Phaser.Scene {
     designationQueue.set([...this.designations])
   }
 
+  // ── Attachment slot claiming (single authoritative path) ──────────────────
+
+  /** Assigns a payload to the first free medium slot. Returns true on success. */
+  private claimFreeMediumSlot(ship: Ship, payload: AttachmentPayload): boolean {
+    const slot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+    if (!slot) return false
+    slot.payload = payload
+    return true
+  }
+
+  /**
+   * Converts a reservation for `targetId` on `ship` into a real payload. Falls
+   * back to any free medium slot if the reservation is missing. Returns true if
+   * the payload was placed.
+   */
+  private resolveReservation(ship: Ship, targetId: string, payload: AttachmentPayload): boolean {
+    const reserved = ship.attachmentPoints.find(
+      ap => ap.payload?.kind === 'reserved' && ap.payload.targetId === targetId,
+    )
+    if (reserved) {
+      reserved.payload = payload
+      return true
+    }
+    return this.claimFreeMediumSlot(ship, payload)
+  }
+
   /** True while the asteroid is in its post-exhaustion undeployable cooldown window. */
   private isAsteroidOnCooldown(asteroidId: string): boolean {
     const until = this.attachCooldowns.get(asteroidId)
@@ -2270,6 +2313,7 @@ export class SpaceScene extends Phaser.Scene {
       }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
       ship.updateSteering(dt)
+      ship.drawSlotIndicators()
       // Detect arrival: steerTowardTarget transitioned to deploying-miner
       if (ship.shipState === 'deploying-miner') {
         this.performDeploy(ship)

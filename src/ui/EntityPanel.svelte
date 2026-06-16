@@ -25,10 +25,11 @@
     return size === 'small' ? 'S' : 'M'
   }
 
-  function payloadLabel(payload: { kind: string; currentNets?: number; maxNets?: number; minerId?: string } | null): string {
+  function payloadLabel(payload: { kind: string; currentNets?: number; maxNets?: number; minerId?: string; forKind?: string } | null): string {
     if (payload === null) return 'empty'
     if (payload.kind === 'net-store') return `net-store [${payload.currentNets}/${payload.maxNets}]`
     if (payload.kind === 'auto-miner') return `auto-miner`
+    if (payload.kind === 'reserved') return `reserved (${payload.forKind ?? '…'})`
     return payload.kind
   }
 </script>
@@ -148,7 +149,7 @@
     {#each $selectedShip.attachmentPoints as ap, i}
       <div class="row ap-row">
         <span class="ap-slot">{i + 1} [{slotLabel(ap.size)}]</span>
-        <span class="ap-payload payload-{ap.payload?.kind ?? 'empty'}">{payloadLabel(ap.payload as { kind: string; currentNets?: number; maxNets?: number } | null)}</span>
+        <span class="ap-payload payload-{ap.payload?.kind ?? 'empty'}">{payloadLabel(ap.payload as { kind: string; currentNets?: number; maxNets?: number; forKind?: string } | null)}</span>
       </div>
       {#if $selectedShip.state === 'collecting-nets' && $selectedShip.collectSlotProgress[i] !== undefined}
         <div class="collect-bar-track">
@@ -346,6 +347,7 @@
   .payload-net-store   { color: #88ddaa; }
   .payload-auto-miner  { color: #88ccdd; }
   .payload-cargo-net   { color: #ffcc44; }
+  .payload-reserved    { color: #7790a8; font-style: italic; }
 
   .action-btn {
     display: block;

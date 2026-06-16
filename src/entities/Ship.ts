@@ -22,6 +22,15 @@ export const UNLOAD_BAR_Y_OFFSET = 18
 export const ATTACH_BAR_Y_OFFSET = UNLOAD_BAR_Y_OFFSET + UNLOAD_BAR_HEIGHT + 4
 export const ATTACH_BAR_COLOR = 0xffaa44
 
+// Slot indicator markers drawn in a row below the hull.
+export const SLOT_INDICATOR_Y_OFFSET = 14
+export const SLOT_MARKER_SIZE = 5
+export const SLOT_MARKER_GAP = 3
+const SLOT_COLOR_MINER = 0x88ccee
+const SLOT_COLOR_NET = 0xffcc44
+const SLOT_COLOR_STORE = 0x99aabb
+const SLOT_COLOR_EMPTY = 0x445566
+
 export const MAX_UPGRADE_LEVEL = 3
 export const CARGO_CAPACITY_TIERS = [200, 350, 550, 800] as const
 export const CARGO_UPGRADE_COSTS  = [300, 600, 1000]     as const
@@ -82,6 +91,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   collectSlotProgress: Map<number, number> = new Map()
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
+  private slotGfx: Phaser.GameObjects.Graphics | null = null
   isSelected: boolean
 
   constructor(
@@ -369,6 +379,57 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /**
+   * Draws a row of markers below the hull, one per attachment point, so the
+   * payload aboard each slot is legible: empty (faint outline), reserved/incoming
+   * (hollow, colored by target kind), carried auto-miner (cyan), cargo-net
+   * (amber), net-store (grey). Called each frame; follows the hull.
+   */
+  destroy(fromScene?: boolean): void {
+    this.destroyProgressBar()
+    if (this.slotGfx !== null) {
+      this.slotGfx.destroy()
+      this.slotGfx = null
+    }
+    super.destroy(fromScene)
+  }
+
+  drawSlotIndicators(): void {
+    if (this.slotGfx === null) {
+      this.slotGfx = this.scene.add.graphics()
+      this.slotGfx.setDepth(this.depth + 1)
+    }
+    const g = this.slotGfx
+    g.clear()
+
+    const n = this.attachmentPoints.length
+    const s = SLOT_MARKER_SIZE
+    const totalW = n * s + (n - 1) * SLOT_MARKER_GAP
+    let mx = this.x - totalW / 2
+    const my = this.y + SLOT_INDICATOR_Y_OFFSET
+
+    for (const ap of this.attachmentPoints) {
+      const p = ap.payload
+      if (p === null) {
+        g.lineStyle(1, SLOT_COLOR_EMPTY, 0.5)
+        g.strokeRect(mx, my, s, s)
+      } else if (p.kind === 'reserved') {
+        g.lineStyle(1, p.forKind === 'auto-miner' ? SLOT_COLOR_MINER : SLOT_COLOR_NET, 0.9)
+        g.strokeRect(mx, my, s, s)
+      } else if (p.kind === 'auto-miner') {
+        g.fillStyle(SLOT_COLOR_MINER, 1)
+        g.fillRect(mx, my, s, s)
+      } else if (p.kind === 'cargo-net') {
+        g.fillStyle(SLOT_COLOR_NET, 1)
+        g.fillRect(mx, my, s, s)
+      } else if (p.kind === 'net-store') {
+        g.fillStyle(SLOT_COLOR_STORE, 0.9)
+        g.fillRect(mx, my, s, s)
+      }
+      mx += s + SLOT_MARKER_GAP
+    }
+  }
+
   select(): void {
     this.isSelected = true
     this.pushToStore()
@@ -388,7 +449,12 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       cargoCapacity: this.cargoCapacity,
       cargoUpgradeLevel: this.cargoUpgradeLevel,
       cargoContents: { ...this.cargoContents },
-      attachmentPoints: this.attachmentPoints.map(ap => ({ ...ap, payload: ap.payload ? { ...ap.payload } : null })),
+      // Reservations are in-flight claims, not real payloads — serialize as empty
+      // so a reloaded slot is released (the target miner/net re-advertises).
+      attachmentPoints: this.attachmentPoints.map(ap => ({
+        ...ap,
+        payload: ap.payload && ap.payload.kind !== 'reserved' ? { ...ap.payload } : null,
+      })),
       unloadProgress: this.shipState === 'unloading'
         ? Math.min(this.unloadTimer / UNLOAD_DURATION, 1)
         : 0,

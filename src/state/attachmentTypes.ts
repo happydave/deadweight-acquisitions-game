@@ -18,7 +18,18 @@ export interface CargoNetPayload {
   readonly netId: string
 }
 
-export type AttachmentPayload = NetStorePayload | AutoMinerPayload | CargoNetPayload
+// A slot committed to a payload the hauler does not yet physically hold (a miner
+// it is travelling to recover, or a net mid-collection). Non-null so free-slot
+// checks (`payload === null`) treat it as occupied; its `kind` never matches a
+// real payload kind, so carried-payload checks skip it. Resolved to the real
+// payload on pickup, or released (→ null) on cancel/load.
+export interface ReservedPayload {
+  readonly kind: 'reserved'
+  readonly forKind: 'auto-miner' | 'cargo-net'
+  readonly targetId: string
+}
+
+export type AttachmentPayload = NetStorePayload | AutoMinerPayload | CargoNetPayload | ReservedPayload
 
 export interface AttachmentPoint {
   readonly id: string
