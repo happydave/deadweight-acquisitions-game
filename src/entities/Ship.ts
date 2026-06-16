@@ -296,6 +296,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.emit('begin-unloading')
     this.shipState = 'unloading'
     this.target = null
+    this.collectSlotProgress.clear() // drop stale collection progress; unload sets its own
     const hasCargoContents = Object.values(this.cargoContents).some(v => (v ?? 0) > 0)
     if (hasCargoContents) {
       this.unloadTimer = 0
@@ -330,6 +331,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       this.attachUnloadTimer = 0
     } else {
       this.attachUnloadActive = false
+      this.collectSlotProgress.clear()
       if (this.attachUnloadGfx !== null) {
         this.attachUnloadGfx.destroy()
         this.attachUnloadGfx = null
@@ -365,10 +367,15 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
 
     if (!this.base.canAcceptCargo(this.cargoContents)) return
 
-    // Advance attachment timer — one net drains per ATTACHMENT_UNLOAD_DURATION.
-    // The scene drains a net on each tick and re-arms via armNextAttachUnload.
+    // Advance attachment timer — one item drains per ATTACHMENT_UNLOAD_DURATION.
+    // The scene drains an item on each tick and re-arms via armNextAttachUnload.
     if (this.attachUnloadActive) {
       this.attachUnloadTimer = Math.min(this.attachUnloadTimer + dt, ATTACHMENT_UNLOAD_DURATION)
+      // Show per-slot progress on the current item (first net, else first miner).
+      this.collectSlotProgress.clear()
+      let curIdx = this.attachmentPoints.findIndex(ap => ap.payload?.kind === 'cargo-net')
+      if (curIdx === -1) curIdx = this.attachmentPoints.findIndex(ap => ap.payload?.kind === 'auto-miner')
+      if (curIdx !== -1) this.collectSlotProgress.set(curIdx, this.attachUnloadTimer / ATTACHMENT_UNLOAD_DURATION)
       if (this.attachUnloadTimer >= ATTACHMENT_UNLOAD_DURATION) {
         this.emit('attachment-unload-tick')
       }
@@ -429,22 +436,30 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     let mx = this.x - totalW / 2
     const my = this.y + SLOT_INDICATOR_Y_OFFSET
 
-    for (const ap of this.attachmentPoints) {
-      const p = ap.payload
-      if (p === null) {
+    for (let i = 0; i < n; i++) {
+      const p = this.attachmentPoints[i].payload
+      const progress = this.collectSlotProgress.get(i)
+      const color =
+        p?.kind === 'auto-miner' || (p?.kind === 'reserved' && p.forKind === 'auto-miner') ? SLOT_COLOR_MINER
+        : p?.kind === 'net-store' ? SLOT_COLOR_STORE
+        : p === null ? SLOT_COLOR_EMPTY
+        : SLOT_COLOR_NET // cargo-net or reserved-for-net
+      if (progress !== undefined) {
+        // Operation in progress (pickup / drop-off / recovery): outline + bottom-up fill.
+        const c = p === null ? SLOT_COLOR_NET : color
+        g.lineStyle(1, c, 0.9)
+        g.strokeRect(mx, my, s, s)
+        const fh = s * Math.min(Math.max(progress, 0), 1)
+        g.fillStyle(c, 1)
+        g.fillRect(mx, my + (s - fh), s, fh)
+      } else if (p === null) {
         g.lineStyle(1, SLOT_COLOR_EMPTY, 0.5)
         g.strokeRect(mx, my, s, s)
       } else if (p.kind === 'reserved') {
-        g.lineStyle(1, p.forKind === 'auto-miner' ? SLOT_COLOR_MINER : SLOT_COLOR_NET, 0.9)
+        g.lineStyle(1, color, 0.9)
         g.strokeRect(mx, my, s, s)
-      } else if (p.kind === 'auto-miner') {
-        g.fillStyle(SLOT_COLOR_MINER, 1)
-        g.fillRect(mx, my, s, s)
-      } else if (p.kind === 'cargo-net') {
-        g.fillStyle(SLOT_COLOR_NET, 1)
-        g.fillRect(mx, my, s, s)
-      } else if (p.kind === 'net-store') {
-        g.fillStyle(SLOT_COLOR_STORE, 0.9)
+      } else {
+        g.fillStyle(color, p.kind === 'net-store' ? 0.9 : 1)
         g.fillRect(mx, my, s, s)
       }
       mx += s + SLOT_MARKER_GAP

@@ -139,7 +139,7 @@ export class SpaceScene extends Phaser.Scene {
   // shipId -> orphaned cargo-net id the ship is travelling to collect.
   private shipNetRecoveryTargets: Map<string, string> = new Map()
   // Ships currently performing the timed attach/recovery maneuver (one-shot guard).
-  private shipAttachManeuver: Set<string> = new Set()
+  private shipAttachManeuver: Map<string, number> = new Map() // shipId -> maneuver start (ms)
   // asteroidId -> scene time (ms) until which the asteroid is undeployable after an
   // attach-retry exhaustion. Transient (not persisted). See ATTACH_COOLDOWN_MS.
   private attachCooldowns: Map<string, number> = new Map()
@@ -2519,17 +2519,20 @@ export class SpaceScene extends Phaser.Scene {
       } else if (miner.state === 'standby-beaconing') {
         const freeSlot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
         if (freeSlot) {
-          // Hold for the attach maneuver (RCS drains while waiting-at-asteroid) before grabbing the miner.
-          this.shipAttachManeuver.add(waitingShip.id)
+          // Reserve the slot now (claims it + drives attach progress), then grab the
+          // miner after the maneuver (RCS drains while waiting-at-asteroid).
+          freeSlot.payload = { kind: 'reserved', forKind: 'auto-miner', targetId: miner.id }
+          this.shipAttachManeuver.set(waitingShip.id, this.time.now)
           this.time.delayedCall(HAULER_ATTACH_MANEUVER_MS, () => {
             this.shipAttachManeuver.delete(waitingShip.id)
-            if (waitingShip.shipState !== 'waiting-at-asteroid' || miner.state !== 'standby-beaconing') return
-            const slot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
-            if (!slot) {
+            if (waitingShip.shipState !== 'waiting-at-asteroid' || miner.state !== 'standby-beaconing') {
+              this.releaseReservationFor(waitingShip, miner.id)
+              return
+            }
+            if (!this.resolveReservation(waitingShip, miner.id, { kind: 'auto-miner', minerId: miner.id })) {
               this.departShipForBase(waitingShip)
               return
             }
-            slot.payload = { kind: 'auto-miner', minerId: miner.id }
             this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
           })
         } else {
@@ -2593,6 +2596,15 @@ export class SpaceScene extends Phaser.Scene {
       }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
       ship.updateSteering(dt)
+      // Drive attach-maneuver progress onto the reserved miner slot (per-slot fill).
+      const maneuverStart = this.shipAttachManeuver.get(ship.id)
+      if (maneuverStart !== undefined) {
+        const prog = Math.min((this.time.now - maneuverStart) / HAULER_ATTACH_MANEUVER_MS, 1)
+        const idx = ship.attachmentPoints.findIndex(
+          ap => ap.payload?.kind === 'reserved' && ap.payload.forKind === 'auto-miner',
+        )
+        if (idx !== -1) ship.collectSlotProgress.set(idx, prog)
+      }
       ship.drawSlotIndicators()
       // Detect arrival: steerTowardTarget transitioned to deploying-miner
       if (ship.shipState === 'deploying-miner') {
@@ -2602,7 +2614,7 @@ export class SpaceScene extends Phaser.Scene {
       // Hold in this state for the attach maneuver (RCS drains via updateSteering)
       // before actually attaching the miner.
       if (ship.shipState === 'loading-miner' && !this.shipAttachManeuver.has(ship.id)) {
-        this.shipAttachManeuver.add(ship.id)
+        this.shipAttachManeuver.set(ship.id, this.time.now)
         this.time.delayedCall(HAULER_ATTACH_MANEUVER_MS, () => {
           this.shipAttachManeuver.delete(ship.id)
           if (ship.shipState === 'loading-miner') this.handleLoadingMiner(ship)
