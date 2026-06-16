@@ -1,5 +1,6 @@
 import type { SaveState } from '../state/gameState'
 import { makeDefaultLoadout } from '../state/attachmentTypes'
+import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities/Ship'
 
 const SAVE_KEY = 'dwa-save'
 
@@ -236,6 +237,19 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 18:
+      // v18 → v19: add thrusterFuel/rcsFuel/battery to every ship
+      raw = {
+        ...raw,
+        schemaVersion: 19,
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          thrusterFuel: (s as { thrusterFuel?: number }).thrusterFuel ?? HAULER_FUEL_MAX,
+          rcsFuel: (s as { rcsFuel?: number }).rcsFuel ?? HAULER_RCS_MAX,
+          battery: (s as { battery?: number }).battery ?? HAULER_BATTERY_MAX,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 19:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

@@ -28,6 +28,9 @@ import {
   CARGO_UPGRADE_COSTS,
   MAX_UPGRADE_LEVEL,
   UPGRADE_HANGAR_DURATION,
+  HAULER_FUEL_MAX,
+  HAULER_RCS_MAX,
+  HAULER_BATTERY_MAX,
 } from '../entities/Ship'
 
 import {
@@ -327,6 +330,9 @@ export class SpaceScene extends Phaser.Scene {
       ship.cargoContents = { ...snap.cargoContents }
       ship.unloadTimer = snap.unloadTimer
       ship.attachUnloadTimer = snap.attachUnloadTimer
+      ship.thrusterFuel = snap.thrusterFuel ?? HAULER_FUEL_MAX
+      ship.rcsFuel = snap.rcsFuel ?? HAULER_RCS_MAX
+      ship.battery = snap.battery ?? HAULER_BATTERY_MAX
       ship.cargoUpgradeLevel = snap.cargoUpgradeLevel
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[snap.cargoUpgradeLevel]
       ship.attachmentPoints = snap.attachmentPoints
@@ -363,6 +369,10 @@ export class SpaceScene extends Phaser.Scene {
         // Hangar service timers are not resumed across sessions; rescue to idle and release slot
         this.releaseHangarSlot(ship)
         ship.shipState = 'idle'
+        ship.pushToStore()
+      } else if (ship.shipState === 'coasting') {
+        ship.shipState = 'traveling-to-base'
+        ship.target = { x: this.base.x, y: this.base.y }
         ship.pushToStore()
       } else if (ship.shipState === 'fetching-station-miner') {
         ship.shipState = 'idle'
@@ -450,7 +460,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 18,
+      schemaVersion: 19,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -494,6 +504,9 @@ export class SpaceScene extends Phaser.Scene {
         dockSlotIndex: s.dockSlotIndex,
         hangarSlotIndex: s.hangarSlotIndex,
         hangarServiceTimer: s.hangarServiceTimer,
+        thrusterFuel: s.thrusterFuel,
+        rcsFuel: s.rcsFuel,
+        battery: s.battery,
       })),
       autoMiners: this.autoMiners.map(m => ({
         id: m.id,
@@ -665,9 +678,27 @@ export class SpaceScene extends Phaser.Scene {
     this.attachShipInput(ship)
     ship.on('begin-unloading', () => this.processNetUnloading(ship))
     ship.on('attachment-unload-complete', () => this.processAttachmentNets(ship))
+    ship.on('fuel-dry', () => {
+      this.pushAttachNotification(`${ship.shipName} out of fuel — coasting`, true)
+      this.time.delayedCall(1000, () => {
+        if (ship.shipState === 'coasting') {
+          ship.shipState = 'traveling-to-base'
+          ship.target = { x: this.base.x, y: this.base.y }
+          ship.pushToStore()
+        }
+      })
+    })
     ship.on('unload-complete', () => {
       this.base.chargeDockFee(ship.dockSlotIndex)
       this.releaseDockSlot(ship)
+      if (ship.thrusterFuel < HAULER_FUEL_MAX || ship.rcsFuel < HAULER_RCS_MAX) {
+        this.base.credits -= getPrice('dock-refuel')
+        this.base.pushToStore()
+        ship.thrusterFuel = HAULER_FUEL_MAX
+        ship.rcsFuel = HAULER_RCS_MAX
+      }
+      ship.battery = HAULER_BATTERY_MAX
+      ship.pushToStore()
     })
     ship.on('hangar-service-complete', () => {
       this.base.chargeHangarFee(ship.hangarSlotIndex)

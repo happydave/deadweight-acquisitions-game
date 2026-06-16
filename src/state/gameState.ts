@@ -57,6 +57,9 @@ export interface ShipSnapshot {
   dockSlotIndex: number | null
   hangarSlotIndex: number | null
   hangarServiceTimer: number
+  thrusterFuel: number
+  rcsFuel: number
+  battery: number
 }
 
 export interface BaseSnapshot {

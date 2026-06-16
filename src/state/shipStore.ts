@@ -18,6 +18,7 @@ export type ShipState =
   | 'responding-to-beacon'
   | 'loading-miner'
   | 'fetching-station-miner'
+  | 'coasting'
 
 export interface SelectedShipData {
   id: string
@@ -30,6 +31,9 @@ export interface SelectedShipData {
   unloadProgress: number
   attachUnloadProgress: number
   collectSlotProgress: Record<number, number>
+  thrusterFuel: number
+  rcsFuel: number
+  battery: number
 }
 
 export interface SelectedAsteroidData {

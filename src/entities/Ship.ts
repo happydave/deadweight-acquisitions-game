@@ -27,6 +27,13 @@ export const CARGO_CAPACITY_TIERS = [200, 350, 550, 800] as const
 export const CARGO_UPGRADE_COSTS  = [300, 600, 1000]     as const
 export const UPGRADE_HANGAR_DURATION = 6  // seconds; halved by pressurization
 
+export const HAULER_FUEL_MAX = 300
+export const HAULER_FUEL_DRAIN_PER_SEC = 3
+export const HAULER_FUEL_EMERGENCY_RESERVE = 100
+export const HAULER_BATTERY_MAX = 100
+export const HAULER_BATTERY_CHARGE_RATE = 0.5
+export const HAULER_RCS_MAX = 100
+
 export function generateShipTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(SHIP_TEXTURE_KEY)) return
   const w = 24
@@ -62,6 +69,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   hangarSlotIndex: number | null = null
   hangarServiceTimer: number = 0
   minerTarget: AutoMiner | null = null
+  thrusterFuel: number
+  rcsFuel: number
+  battery: number
   collectSlotProgress: Map<number, number> = new Map()
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
@@ -90,6 +100,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.attachmentPoints = makeDefaultLoadout()
     this.asteroidTarget = null
     this.unloadTimer = 0
+    this.thrusterFuel = HAULER_FUEL_MAX
+    this.rcsFuel = HAULER_RCS_MAX
+    this.battery = HAULER_BATTERY_MAX
     this.isSelected = false
 
     scene.add.existing(this)
@@ -105,6 +118,25 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   }
 
   updateSteering(dt: number): void {
+    const isTransit =
+      this.shipState === 'traveling-to-asteroid' ||
+      this.shipState === 'traveling-to-base' ||
+      this.shipState === 'responding-to-beacon' ||
+      this.shipState === 'traveling-to-hangar' ||
+      this.shipState === 'fetching-station-miner' ||
+      this.shipState === 'moving'
+    if (isTransit) {
+      if (this.thrusterFuel <= 0) {
+        this.setVelocity(0, 0)
+        this.thrusterFuel = HAULER_FUEL_EMERGENCY_RESERVE
+        this.shipState = 'coasting'
+        this.pushToStore()
+        this.emit('fuel-dry')
+        return
+      }
+      this.thrusterFuel = Math.max(0, this.thrusterFuel - HAULER_FUEL_DRAIN_PER_SEC * dt)
+      this.battery = Math.min(HAULER_BATTERY_MAX, this.battery + HAULER_BATTERY_CHARGE_RATE * dt)
+    }
     switch (this.shipState) {
       case 'moving':
         this.steerTowardTarget(dt, ARRIVAL_RADIUS, () => this.arriveIdle())
@@ -157,6 +189,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       case 'collecting-nets':
       case 'resupplying-miner':
       case 'loading-miner':
+        this.setVelocity(0, 0)
+        break
+      case 'coasting':
         this.setVelocity(0, 0)
         break
       case 'idle':
@@ -349,6 +384,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         : 0,
       attachUnloadProgress: Math.min(this.attachUnloadTimer / ATTACHMENT_UNLOAD_DURATION, 1),
       collectSlotProgress: Object.fromEntries(this.collectSlotProgress) as Record<number, number>,
+      thrusterFuel: this.thrusterFuel,
+      rcsFuel: this.rcsFuel,
+      battery: this.battery,
     })
   }
 }
