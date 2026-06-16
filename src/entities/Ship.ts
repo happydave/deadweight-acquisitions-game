@@ -304,8 +304,12 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     } else {
       this.unloadTimer = UNLOAD_DURATION
     }
-    const hasAttachNets = this.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net')
-    if (hasAttachNets) {
+    // A cargo-net slot, or a carried (in-transit) auto-miner, is a timed
+    // attachment-unload item handled one-per-interval by the scene.
+    const hasAttachItems = this.attachmentPoints.some(
+      ap => ap.payload?.kind === 'cargo-net' || ap.payload?.kind === 'auto-miner',
+    )
+    if (hasAttachItems) {
       this.attachUnloadActive = true
       this.attachUnloadTimer = 0
       this.attachUnloadGfx = this.scene.add.graphics()

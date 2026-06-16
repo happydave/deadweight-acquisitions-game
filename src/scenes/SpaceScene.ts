@@ -358,9 +358,10 @@ export class SpaceScene extends Phaser.Scene {
       ship.cargoContents = { ...snap.cargoContents }
       ship.unloadTimer = snap.unloadTimer
       ship.attachUnloadTimer = snap.attachUnloadTimer
-      // Resume per-net attach-unload if mid-unload with nets still aboard.
+      // Resume the timed attach-unload if mid-unload with nets or a carried miner aboard.
       ship.attachUnloadActive =
-        snap.shipState === 'unloading' && snap.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net')
+        snap.shipState === 'unloading' &&
+        snap.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net' || ap.payload?.kind === 'auto-miner')
       ship.thrusterFuel = snap.thrusterFuel ?? HAULER_FUEL_MAX
       ship.rcsFuel = snap.rcsFuel ?? HAULER_RCS_MAX
       ship.battery = snap.battery ?? HAULER_BATTERY_MAX
@@ -743,7 +744,7 @@ export class SpaceScene extends Phaser.Scene {
   private attachShipEvents(ship: Ship): void {
     this.attachShipInput(ship)
     ship.on('begin-unloading', () => this.processNetUnloading(ship))
-    ship.on('attachment-unload-tick', () => this.processAttachmentNetTick(ship))
+    ship.on('attachment-unload-tick', () => this.processAttachmentUnloadTick(ship))
     ship.on('fuel-dry', () => {
       this.pushAttachNotification(`${ship.shipName} out of fuel — coasting`, true)
       this.time.delayedCall(1000, () => {
@@ -880,19 +881,8 @@ export class SpaceScene extends Phaser.Scene {
             }
           }
           miner.tetheredNetIds = []
-          // Auto-transfer in-transit miner to station storage if a slot is available
-          if (miner.state === 'in-transit' && this.base.storeAutoMiner(miner.id)) {
-            miner.state = 'station-stored'
-            if (miner.battery < MINER_BATTERY_MAX) {
-              const deficit = MINER_BATTERY_MAX - miner.battery
-              this.base.credits -= Math.round(deficit * getPrice('electricity-per-battery-unit'))
-              miner.battery = MINER_BATTERY_MAX
-              this.base.pushToStore()
-            }
-            miner.setVisible(false)
-            ap.payload = null
-            miner.pushToStore()
-          }
+          // In-transit miner storage is handled by the timed attachment-unload
+          // phase (processAttachmentUnloadTick), not instantly here.
         }
       }
     }
@@ -907,11 +897,16 @@ export class SpaceScene extends Phaser.Scene {
     ship.pushToStore()
   }
 
-  /** Drains a single attachment cargo-net (one per ~1.5 s timer), then re-arms. */
-  private processAttachmentNetTick(ship: Ship): void {
-    const ap = ship.attachmentPoints.find(a => a.payload?.kind === 'cargo-net')
-    if (ap && ap.payload?.kind === 'cargo-net') {
-      const net = this.cargoNetMap.get(ap.payload.netId)
+  /**
+   * Processes one attachment item per ~1.5 s timer during unload, then re-arms:
+   * drains a cargo-net if any, otherwise stores+recharges one in-transit miner
+   * into station storage (when a slot is free). An in-transit miner that cannot
+   * be stored (storage full) is left on the hauler for the idle-carrier loop.
+   */
+  private processAttachmentUnloadTick(ship: Ship): void {
+    const netAp = ship.attachmentPoints.find(a => a.payload?.kind === 'cargo-net')
+    if (netAp && netAp.payload?.kind === 'cargo-net') {
+      const net = this.cargoNetMap.get(netAp.payload.netId)
       if (net) {
         this.base.acceptCargo({ [net.resourceType]: net.quantity })
         this.cargoNetMap.delete(net.id)
@@ -919,12 +914,38 @@ export class SpaceScene extends Phaser.Scene {
         if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
         net.destroy()
       }
-      ap.payload = null
+      netAp.payload = null
+    } else {
+      // No nets left: store one in-transit miner this tick (if storage is free).
+      const minerAp = ship.attachmentPoints.find(
+        a => a.payload?.kind === 'auto-miner' &&
+             this.autoMinerMap.get(a.payload.minerId)?.state === 'in-transit',
+      )
+      if (minerAp && minerAp.payload?.kind === 'auto-miner') {
+        const miner = this.autoMinerMap.get(minerAp.payload.minerId)
+        if (miner && this.base.storeAutoMiner(miner.id)) {
+          this.rechargeMinerAtStation(miner)
+          miner.state = 'station-stored'
+          miner.setVisible(false)
+          minerAp.payload = null
+          miner.pushToStore()
+        }
+      }
     }
-    const hasMore = ship.attachmentPoints.some(a => a.payload?.kind === 'cargo-net')
-    ship.armNextAttachUnload(hasMore)
+    ship.armNextAttachUnload(this.shipHasUnloadItem(ship))
     this.base.pushToStore()
     ship.pushToStore()
+  }
+
+  /** True if the ship still has an attachment item to unload (net, or storable miner). */
+  private shipHasUnloadItem(ship: Ship): boolean {
+    const hasNet = ship.attachmentPoints.some(a => a.payload?.kind === 'cargo-net')
+    if (hasNet) return true
+    if (this.base.stationMinerIds.length >= this.base.stationMinerSlotCount) return false
+    return ship.attachmentPoints.some(
+      a => a.payload?.kind === 'auto-miner' &&
+           this.autoMinerMap.get(a.payload.minerId)?.state === 'in-transit',
+    )
   }
 
   private autoDispatch(): void {
