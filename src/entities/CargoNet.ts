@@ -7,7 +7,7 @@ export type CargoNetState = 'full-tethered' | 'in-transit' | 'unloading'
 
 export const CARGO_NET_TEXTURE_KEY = 'cargo-net'
 export const NET_LEAKAGE_FRACTION = 0.05
-export const NET_COLLECT_DURATION_MS = 2000
+export const NET_COLLECT_DURATION_MS = 1500
 export const TETHER_LINE_COLOR = 0x556677
 export const TETHER_LINE_ALPHA = 0.5
 

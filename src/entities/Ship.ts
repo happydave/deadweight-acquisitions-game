@@ -79,6 +79,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   speedMultiplier = 1.0
   unloadTimer: number
   attachUnloadTimer: number = 0
+  attachUnloadActive: boolean = false
   waitOrbitalAngle: number | null = null
   dockSlotIndex: number | null = null
   hangarSlotIndex: number | null = null
@@ -305,11 +306,30 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     }
     const hasAttachNets = this.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net')
     if (hasAttachNets) {
+      this.attachUnloadActive = true
       this.attachUnloadTimer = 0
       this.attachUnloadGfx = this.scene.add.graphics()
       this.attachUnloadGfx.setDepth(this.depth + 1)
     } else {
+      this.attachUnloadActive = false
       this.attachUnloadTimer = ATTACHMENT_UNLOAD_DURATION
+    }
+    this.pushToStore()
+  }
+
+  /**
+   * Called by the scene after each attachment net is drained: re-arm the per-net
+   * timer if more nets remain, otherwise end the attach-unload phase.
+   */
+  armNextAttachUnload(hasMore: boolean): void {
+    if (hasMore) {
+      this.attachUnloadTimer = 0
+    } else {
+      this.attachUnloadActive = false
+      if (this.attachUnloadGfx !== null) {
+        this.attachUnloadGfx.destroy()
+        this.attachUnloadGfx = null
+      }
     }
     this.pushToStore()
   }
@@ -341,15 +361,12 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
 
     if (!this.base.canAcceptCargo(this.cargoContents)) return
 
-    // Advance attachment timer
-    if (this.attachUnloadTimer < ATTACHMENT_UNLOAD_DURATION) {
+    // Advance attachment timer — one net drains per ATTACHMENT_UNLOAD_DURATION.
+    // The scene drains a net on each tick and re-arms via armNextAttachUnload.
+    if (this.attachUnloadActive) {
       this.attachUnloadTimer = Math.min(this.attachUnloadTimer + dt, ATTACHMENT_UNLOAD_DURATION)
       if (this.attachUnloadTimer >= ATTACHMENT_UNLOAD_DURATION) {
-        if (this.attachUnloadGfx !== null) {
-          this.attachUnloadGfx.destroy()
-          this.attachUnloadGfx = null
-        }
-        this.emit('attachment-unload-complete')
+        this.emit('attachment-unload-tick')
       }
     }
 
@@ -357,7 +374,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.unloadTimer += dt
     this.pushToStore()
     if (this.unloadTimer < UNLOAD_DURATION) return
-    if (this.attachUnloadTimer < ATTACHMENT_UNLOAD_DURATION) return
+    if (this.attachUnloadActive) return
 
     this.base.acceptCargo(this.cargoContents)
     this.cargoContents = {}

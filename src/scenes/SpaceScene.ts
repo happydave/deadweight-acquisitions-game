@@ -358,6 +358,9 @@ export class SpaceScene extends Phaser.Scene {
       ship.cargoContents = { ...snap.cargoContents }
       ship.unloadTimer = snap.unloadTimer
       ship.attachUnloadTimer = snap.attachUnloadTimer
+      // Resume per-net attach-unload if mid-unload with nets still aboard.
+      ship.attachUnloadActive =
+        snap.shipState === 'unloading' && snap.attachmentPoints.some(ap => ap.payload?.kind === 'cargo-net')
       ship.thrusterFuel = snap.thrusterFuel ?? HAULER_FUEL_MAX
       ship.rcsFuel = snap.rcsFuel ?? HAULER_RCS_MAX
       ship.battery = snap.battery ?? HAULER_BATTERY_MAX
@@ -716,7 +719,7 @@ export class SpaceScene extends Phaser.Scene {
   private attachShipEvents(ship: Ship): void {
     this.attachShipInput(ship)
     ship.on('begin-unloading', () => this.processNetUnloading(ship))
-    ship.on('attachment-unload-complete', () => this.processAttachmentNets(ship))
+    ship.on('attachment-unload-tick', () => this.processAttachmentNetTick(ship))
     ship.on('fuel-dry', () => {
       this.pushAttachNotification(`${ship.shipName} out of fuel — coasting`, true)
       this.time.delayedCall(1000, () => {
@@ -880,20 +883,22 @@ export class SpaceScene extends Phaser.Scene {
     ship.pushToStore()
   }
 
-  private processAttachmentNets(ship: Ship): void {
-    for (const ap of ship.attachmentPoints) {
-      if (ap.payload?.kind === 'cargo-net') {
-        const net = this.cargoNetMap.get(ap.payload.netId)
-        if (net) {
-          this.base.acceptCargo({ [net.resourceType]: net.quantity })
-          this.cargoNetMap.delete(net.id)
-          this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
-          if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
-          net.destroy()
-        }
-        ap.payload = null
+  /** Drains a single attachment cargo-net (one per ~1.5 s timer), then re-arms. */
+  private processAttachmentNetTick(ship: Ship): void {
+    const ap = ship.attachmentPoints.find(a => a.payload?.kind === 'cargo-net')
+    if (ap && ap.payload?.kind === 'cargo-net') {
+      const net = this.cargoNetMap.get(ap.payload.netId)
+      if (net) {
+        this.base.acceptCargo({ [net.resourceType]: net.quantity })
+        this.cargoNetMap.delete(net.id)
+        this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
+        if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
+        net.destroy()
       }
+      ap.payload = null
     }
+    const hasMore = ship.attachmentPoints.some(a => a.payload?.kind === 'cargo-net')
+    ship.armNextAttachUnload(hasMore)
     this.base.pushToStore()
     ship.pushToStore()
   }
