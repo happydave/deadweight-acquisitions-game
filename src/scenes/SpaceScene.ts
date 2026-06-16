@@ -1534,20 +1534,8 @@ export class SpaceScene extends Phaser.Scene {
       return
     }
 
-    const minerId = this.shipMinerRecoveryTargets.get(ship.id)
-    const miner = minerId ? this.autoMinerMap.get(minerId) : null
-
-    if (miner) {
-      ship.minerTarget = miner
-      const fullNetIds = miner.tetheredNetIds.filter(
-        id => this.cargoNetMap.get(id)?.state === 'full-tethered',
-      )
-      if (fullNetIds.length > 0) {
-        this.beginCollecting(ship, miner, () => this.performRecovery(ship))
-        return
-      }
-    }
-
+    // performRecovery attaches the miner first (its own ~1.5s maneuver step), then
+    // collects any tethered nets as separate per-item steps.
     this.performRecovery(ship)
   }
 
@@ -1629,29 +1617,32 @@ export class SpaceScene extends Phaser.Scene {
       this.departShipForBase(ship)
       return
     }
-    {
-      // Convert the reservation into the real carried-miner payload on pickup. If
-      // no slot can hold it, leave the miner recoverable (re-beacon) rather than
-      // dropping it.
-      if (!this.resolveReservation(ship, minerId, { kind: 'auto-miner', minerId })) {
-        miner.state = 'standby-beaconing'
-        miner.beaconReason = 'depleted'
-        miner.startBeacon()
-        miner.pushToStore()
-        this.departShipForBase(ship)
-        return
-      }
-      miner.freeOrbitalRadius = null
-      miner.freeOrbitalAngle = null
-      miner.state = 'in-transit'
-      miner.beaconReason = null
-      miner.setVisible(false)
-      // Any nets that did not fit are orphaned to free-orbit (recoverable), not lost.
-      this.orphanRemainingNets(miner)
-      miner.stopBeacon()
-      activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
+    // Step 1: attach the miner (its own completion). If no slot can hold it, leave
+    // the miner recoverable (re-beacon) rather than dropping it.
+    if (!this.resolveReservation(ship, minerId, { kind: 'auto-miner', minerId })) {
+      miner.state = 'standby-beaconing'
+      miner.beaconReason = 'depleted'
+      miner.startBeacon()
+      miner.pushToStore()
+      this.departShipForBase(ship)
+      return
     }
-    this.departShipForBase(ship)
+    miner.freeOrbitalRadius = null
+    miner.freeOrbitalAngle = null
+    miner.state = 'in-transit'
+    miner.beaconReason = null
+    miner.setVisible(false)
+    miner.stopBeacon()
+    activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
+    miner.pushToStore()
+    ship.minerTarget = miner
+
+    // Step 2: collect any tethered nets as separate per-item steps (beginCollecting
+    // no-ops if none), then orphan whatever did not fit and head home.
+    this.beginCollecting(ship, miner, () => {
+      this.orphanRemainingNets(miner)
+      this.departShipForBase(ship)
+    })
   }
 
   private performDeploy(ship: Ship): void {
