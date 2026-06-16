@@ -65,7 +65,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **AutoMiner** `/src/entities/AutoMiner.ts` — `Phaser.GameObjects.Image`
   - Inputs: `updateMining(dt, asteroid)` call from SpaceScene when state is `'mining'`
   - Outputs: `selectedAutoMiner` store; emits `'net-ejected'` (CargoNet instance), `'beacon-emitted'` ({id, x, y})
-  - State machine: `in-transit` → `deploying` → `attaching` → `mining` → `ejecting-net` → `mining` | `net-starved`; also `standby-beaconing` (asteroid depleted), `drifting` (attach retry), `dark` (exhausted retries)
+  - State machine: `in-transit` → `deploying` → `attaching` → `mining` → `ejecting-net` → `mining` | `net-starved`; also `standby-beaconing` (asteroid depleted), `drifting` (attach retry), `stuck` (exhausted retries, no slot — still beaconing, recoverable via beacon), `dark` (battery exhaustion — beacon silent, recoverable by manual dispatch)
   - Constants: `MINER_RATE=5` units/s, `NET_CAPACITY=50` units, `MINER_INITIAL_NETS=3`, `ATTACH_FAILURE_PROB=0.25`, `ATTACH_MAX_RETRIES=3`, `BEACON_INTERVAL_MS=3000`
   - Free-orbit fields: `freeOrbitalRadius`, `freeOrbitalAngle` — used when asteroid depletes and miner drifts unattached
 

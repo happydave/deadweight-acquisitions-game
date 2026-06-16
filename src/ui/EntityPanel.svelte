@@ -325,6 +325,7 @@
   .state-am-ejecting-net           { color: #88ddff; }
   .state-am-net-starved            { color: #ff6644; }
   .state-am-standby-beaconing      { color: #ffaa44; }
+  .state-am-stuck                  { color: #cc4444; }
   .state-am-station-repair         { color: #88ccdd; }
 
   .cond-ok       { color: #cce0f0; }

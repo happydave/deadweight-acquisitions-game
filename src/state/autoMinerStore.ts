@@ -22,6 +22,7 @@ export interface AutoMinerSummary {
   netStarved: number
   beaconing: number
   dark: number
+  stuck: number
 }
 
 export interface AttachNotification {
@@ -38,6 +39,6 @@ export interface MinerAvailability {
 
 export const selectedAutoMiner = writable<SelectedAutoMinerData | null>(null)
 export const activeBeacons = writable<BeaconData[]>([])
-export const autoMinerSummary = writable<AutoMinerSummary>({ mining: 0, netStarved: 0, beaconing: 0, dark: 0 })
+export const autoMinerSummary = writable<AutoMinerSummary>({ mining: 0, netStarved: 0, beaconing: 0, dark: 0, stuck: 0 })
 export const attachNotifications = writable<AttachNotification[]>([])
 export const minerAvailability = writable<MinerAvailability>({ available: 0, demanded: 0, shortage: false })

@@ -1234,7 +1234,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private initiateRespondToBeacon(minerId: string): void {
     const miner = this.autoMinerMap.get(minerId)
-    if (!miner || miner.state !== 'standby-beaconing') return
+    if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck')) return
 
     const nearestIdle = this.ships
       .filter(s => s.shipState === 'idle')
@@ -1504,8 +1504,8 @@ export class SpaceScene extends Phaser.Scene {
       miner.state = 'in-transit'
       miner.setVisible(false)
     } else {
-      console.warn(`handleAttachExhaustion: no free medium slot on ship ${ship.id}, miner ${miner.id} falls back to beaconing`)
-      miner.state = 'standby-beaconing'
+      console.warn(`handleAttachExhaustion: no free medium slot on ship ${ship.id}, miner ${miner.id} — stuck`)
+      miner.state = 'stuck'
       miner.startBeacon()
     }
 
@@ -1960,7 +1960,7 @@ export class SpaceScene extends Phaser.Scene {
     // Only include states where the miner should track its asteroid per-frame.
     // Do NOT include 'drifting' or other states that manage their own position via tweens.
     const deployedStates = new Set<AutoMinerState>([
-      'attaching', 'mining', 'ejecting-net', 'net-starved', 'standby-beaconing', 'dark',
+      'attaching', 'mining', 'ejecting-net', 'net-starved', 'standby-beaconing', 'stuck', 'dark',
     ])
     for (const miner of this.autoMiners) {
       if (miner.asteroidId && deployedStates.has(miner.state)) {
@@ -2122,14 +2122,15 @@ export class SpaceScene extends Phaser.Scene {
     }
     fleetSummary.set({ idle, active, returning })
 
-    let mining = 0, netStarved = 0, beaconing = 0, dark = 0
+    let mining = 0, netStarved = 0, beaconing = 0, dark = 0, stuck = 0
     for (const miner of this.autoMiners) {
       if (miner.state === 'mining' || miner.state === 'ejecting-net') mining++
       else if (miner.state === 'net-starved') netStarved++
       else if (miner.state === 'standby-beaconing') beaconing++
       else if (miner.state === 'dark') dark++
+      else if (miner.state === 'stuck') stuck++
     }
-    autoMinerSummary.set({ mining, netStarved, beaconing, dark })
+    autoMinerSummary.set({ mining, netStarved, beaconing, dark, stuck })
 
     // Compute miner availability vs designation demand
     const idleShipIds = new Set(this.ships.filter(s => s.shipState === 'idle').map(s => s.id))

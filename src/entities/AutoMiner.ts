@@ -13,6 +13,7 @@ export type AutoMinerState =
   | 'ejecting-net'
   | 'net-starved'
   | 'standby-beaconing'
+  | 'stuck'
   | 'drifting'
   | 'dark'
   | 'station-stored'

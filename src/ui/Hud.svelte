@@ -82,6 +82,12 @@
         <span class="hud-val">{$autoMinerSummary.dark}</span>
       </div>
     {/if}
+    {#if $autoMinerSummary.stuck > 0}
+      <div class="hud-row hud-indent">
+        <span class="hud-key miner-stuck">Stuck</span>
+        <span class="hud-val">{$autoMinerSummary.stuck}</span>
+      </div>
+    {/if}
   {/if}
   {#if $minerAvailability.shortage}
     <div class="hud-row hud-section miner-shortage">
@@ -173,6 +179,7 @@
   .miner-starved  { color: #cc8844; }
   .miner-beaconing { color: #ffaa44; }
   .miner-dark     { color: #556677; }
+  .miner-stuck    { color: #cc4444; }
 
   .beacon-alert {
     align-items: center;
