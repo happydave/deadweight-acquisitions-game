@@ -47,6 +47,7 @@ import {
   ATTACH_MAX_RETRIES,
   ATTACH_DRIFT_DURATION_MS,
   ATTACH_RETRY_DELAY_MS,
+  ATTACH_COOLDOWN_MS,
   CONDITION_DEGRADE_PER_FAIL,
   CONDITION_MAX_PENALTY,
   CONDITION_CAP_THRESHOLD,
@@ -136,6 +137,9 @@ export class SpaceScene extends Phaser.Scene {
   private shipMinerRecoveryTargets: Map<string, string> = new Map()
   // Ships currently performing the timed attach/recovery maneuver (one-shot guard).
   private shipAttachManeuver: Set<string> = new Set()
+  // asteroidId -> scene time (ms) until which the asteroid is undeployable after an
+  // attach-retry exhaustion. Transient (not persisted). See ATTACH_COOLDOWN_MS.
+  private attachCooldowns: Map<string, number> = new Map()
   private attachRetryCount: Map<string, number> = new Map()
   private base!: Base
   private selectedShip: Ship | null = null
@@ -875,6 +879,21 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private autoDispatch(): void {
+    // Reconcile fulfilled designations: if the asteroid still exists but no miner
+    // is attached to it any more (recovered, low-battery, or destroyed), revert to
+    // queued so a replacement is (re)dispatched. Depleted asteroids are retired
+    // elsewhere, so their designations are already gone.
+    let reconciled = false
+    for (const d of this.designations) {
+      if (d.status !== 'fulfilled') continue
+      if (!this.asteroidMap.has(d.asteroidId)) continue
+      if (this.autoMiners.some(m => m.asteroidId === d.asteroidId)) continue
+      d.status = 'queued'
+      d.claimedByShipId = null
+      reconciled = true
+    }
+    if (reconciled) designationQueue.set([...this.designations])
+
     // Fulfil queued mining designations
     for (const designation of [...this.designations]) {
       if (designation.status !== 'queued') continue
@@ -883,6 +902,9 @@ export class SpaceScene extends Phaser.Scene {
         this.retireDesignationsForAsteroid(designation.asteroidId)
         continue
       }
+      // Leave the designation queued while the asteroid is in its post-exhaustion
+      // cooldown, rather than dispatching a hauler that would just fail again.
+      if (this.isAsteroidOnCooldown(designation.asteroidId)) continue
       // Skip if a ship is already heading to this asteroid or fetching miner for it
       const alreadyDispatched =
         this.ships.some(s => s.asteroidTarget?.id === designation.asteroidId) ||
@@ -964,6 +986,10 @@ export class SpaceScene extends Phaser.Scene {
       const occupiedIds = new Set(
         this.ships.filter(s => s.asteroidTarget !== null).map(s => s.asteroidTarget!.id),
       )
+      // Also exclude asteroids in their post-exhaustion undeployable cooldown.
+      for (const asteroid of this.asteroids) {
+        if (this.isAsteroidOnCooldown(asteroid.id)) occupiedIds.add(asteroid.id)
+      }
       const nearest = selectDeployTarget(this.asteroids, ship, occupiedIds)
       if (!nearest) continue
 
@@ -1307,6 +1333,11 @@ export class SpaceScene extends Phaser.Scene {
     const miner = this.autoMinerMap.get(minerId)
     if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck' && miner.state !== 'dark')) return
 
+    // Idempotency: do not dispatch a second hauler to a miner already being
+    // recovered (repeated Dispatch clicks would otherwise each send a new idle
+    // hauler to the same miner). Mirrors the auto-dispatch guard.
+    if ([...this.shipMinerRecoveryTargets.values()].includes(minerId)) return
+
     // Only consider idle haulers that have a free medium slot, so a full idle
     // hauler nearest the beacon does not block recovery by others.
     const nearestIdle = this.ships
@@ -1506,6 +1537,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.startBeacon()
       miner.pushToStore()
       this.attachRetryCount.delete(ship.id)
+      this.retireDesignationsForAsteroid(asteroid.id)
       return
     }
 
@@ -1525,8 +1557,9 @@ export class SpaceScene extends Phaser.Scene {
     if (miner.condition < CONDITION_CAP_THRESHOLD && Math.random() < CATASTROPHIC_FAIL_PROB) {
       this.pushAttachNotification('Miner destroyed — catastrophic attach failure', true)
       this.attachRetryCount.delete(ship.id)
-      const claimedDesig = this.designations.find(d => d.claimedByShipId === ship.id)
-      if (claimedDesig) this.releaseDesignation(claimedDesig.id)
+      // Miner gone: the fulfilled reconcile in autoDispatch reverts the asteroid's
+      // designation to queued so a replacement is dispatched. No cooldown — a
+      // healthy miner could still attach here.
       this.autoMiners = this.autoMiners.filter(m => m.id !== miner.id)
       this.autoMinerMap.delete(miner.id)
       miner.destroy()
@@ -1573,17 +1606,22 @@ export class SpaceScene extends Phaser.Scene {
   private handleAttachExhaustion(ship: Ship, miner: AutoMiner, asteroid: Asteroid): void {
     this.attachRetryCount.delete(ship.id)
 
-    // Release any designation claimed by this ship so it can be re-queued
-    const claimedDesig = this.designations.find(d => d.claimedByShipId === ship.id)
-    if (claimedDesig) this.releaseDesignation(claimedDesig.id)
+    // The deploy failed: mark the asteroid undeployable for a cooldown so it is not
+    // immediately re-targeted. The designation reverts to queued via the fulfilled
+    // reconcile in autoDispatch (the miner detaches below) and the cooldown gates
+    // re-dispatch until the window passes — i.e. temporary, then retryable.
+    this.attachCooldowns.set(asteroid.id, this.time.now + ATTACH_COOLDOWN_MS)
 
     const freeSlot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
     if (freeSlot) {
       freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
       miner.state = 'in-transit'
       miner.beaconReason = null
+      miner.asteroidId = null
       miner.setVisible(false)
     } else {
+      // No slot to recover into: miner stays at the asteroid as 'stuck', beaconing
+      // for manual recovery. The hauler still returns to base.
       console.warn(`handleAttachExhaustion: no free medium slot on ship ${ship.id}, miner ${miner.id} — stuck`)
       miner.state = 'stuck'
       miner.beaconReason = 'stuck'
@@ -1591,10 +1629,13 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     miner.pushToStore()
-    ship.pushToStore()
+
+    // The hauler is done here regardless of outcome — send it home rather than
+    // leaving it stranded in waiting-at-asteroid.
+    this.departShipForBase(ship)
 
     this.pushAttachNotification(
-      `Miner attach exhausted — ${asteroid.resourceType} asteroid ${miner.asteroidId ?? ''}`,
+      `Miner attach exhausted — ${asteroid.resourceType} asteroid`,
       true,
     )
   }
@@ -1832,9 +1873,12 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   fulfillDesignation(id: string): void {
-    const idx = this.designations.findIndex(d => d.id === id)
-    if (idx < 0) return
-    this.designations.splice(idx, 1)
+    const entry = this.designations.find(d => d.id === id)
+    if (!entry) return
+    // Keep the entry bound to its asteroid ("being mined") so it cannot be
+    // re-designated; retireDesignationsForAsteroid removes it on depletion.
+    entry.status = 'fulfilled'
+    entry.claimedByShipId = null
     designationQueue.set([...this.designations])
   }
 
@@ -1843,6 +1887,17 @@ export class SpaceScene extends Phaser.Scene {
     if (!had) return
     this.designations = this.designations.filter(d => d.asteroidId !== asteroidId)
     designationQueue.set([...this.designations])
+  }
+
+  /** True while the asteroid is in its post-exhaustion undeployable cooldown window. */
+  private isAsteroidOnCooldown(asteroidId: string): boolean {
+    const until = this.attachCooldowns.get(asteroidId)
+    if (until === undefined) return false
+    if (until <= this.time.now) {
+      this.attachCooldowns.delete(asteroidId)
+      return false
+    }
+    return true
   }
 
   private setupInput(): void {

@@ -30,6 +30,10 @@ export const ATTACH_FAILURE_PROB = 0.25
 export const ATTACH_MAX_RETRIES = 3
 export const ATTACH_DRIFT_DURATION_MS = 800
 export const ATTACH_RETRY_DELAY_MS = 1800
+// After a miner exhausts its attach retries at an asteroid, that asteroid is
+// considered undeployable for this window so the deploy loop does not immediately
+// re-target it (avoids redeploy thrash). It becomes retryable once the window passes.
+export const ATTACH_COOLDOWN_MS = 30000
 export const AUTOMINER_PURCHASE_COST = 300
 export const STATION_MINER_SLOT_CAP = 6
 export const MINER_TEXTURE_KEY = 'autominer'

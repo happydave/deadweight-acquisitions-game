@@ -80,7 +80,7 @@ export interface BaseSnapshot {
 export interface MiningDesignationSnapshot {
   id: string
   asteroidId: string
-  status: 'queued' | 'claimed'
+  status: 'queued' | 'claimed' | 'fulfilled'
   claimedByShipId: string | null
 }
 

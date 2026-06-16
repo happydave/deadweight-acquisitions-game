@@ -65,7 +65,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **AutoMiner** `/src/entities/AutoMiner.ts` — `Phaser.GameObjects.Image`
   - Inputs: `updateMining(dt, asteroid)` call from SpaceScene when state is `'mining'`
   - Outputs: `selectedAutoMiner` store; emits `'net-ejected'` (CargoNet instance), `'beacon-emitted'` ({id, x, y})
-  - State machine: `in-transit` → `deploying` → `attaching` → `mining` → `ejecting-net` → `mining` | `net-starved`; also `standby-beaconing` (asteroid depleted), `drifting` (attach retry), `stuck` (exhausted retries, no slot — still beaconing, recoverable via beacon), `dark` (battery exhaustion — beacon silent, recoverable by manual dispatch)
+  - State machine: `in-transit` → `deploying` → `attaching` → `mining` → `ejecting-net` → `mining` | `net-starved`; also `standby-beaconing` (asteroid depleted, or battery ≤10% — a mining miner starts beaconing at ≤20% while still working, then stops mining at ≤10%), `drifting` (attach retry), `stuck` (retries exhausted with no free slot to recover into; with a free slot the miner is recovered to `in-transit` instead and its asteroid enters an attach cooldown — see `ATTACH_COOLDOWN_MS`), `dark` (battery exhausted — beacon silent, recoverable by manual dispatch). `beaconReason` (`depleted` | `low-battery` | `stuck`) records why the miner is advertising.
   - Constants: `MINER_RATE=5` units/s, `NET_CAPACITY=50` units, `MINER_INITIAL_NETS=3`, `ATTACH_FAILURE_PROB=0.25`, `ATTACH_MAX_RETRIES=3`, `BEACON_INTERVAL_MS=3000`
   - Free-orbit fields: `freeOrbitalRadius`, `freeOrbitalAngle` — used when asteroid depletes and miner drifts unattached
 

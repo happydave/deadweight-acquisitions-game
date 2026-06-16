@@ -205,6 +205,11 @@
         class="action-btn"
         on:click={() => commandQueue.update(q => [...q, { type: 'designateAsteroid', asteroidId: $selectedAsteroid!.id }])}
       >Designate for Mining</button>
+    {:else if designation.status === 'fulfilled'}
+      <div class="row">
+        <span class="label">Status</span>
+        <span class="value desig-fulfilled">being mined</span>
+      </div>
     {:else}
       <div class="row">
         <span class="label">Status</span>
@@ -438,6 +443,7 @@
 
   .desig-queued  { color: #88ffaa; }
   .desig-claimed { color: #ffdd88; }
+  .desig-fulfilled { color: #66ccff; }
 
   .action-btn-cancel {
     background: rgba(60, 20, 20, 0.8);
