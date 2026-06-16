@@ -1641,6 +1641,18 @@ export class SpaceScene extends Phaser.Scene {
       return
     }
 
+    // Backstop: never deploy a second miner onto an asteroid that already has one
+    // (e.g. an un-designate/re-designate race dispatched a duplicate). Keep this
+    // miner, re-mark the asteroid as being mined, and return to base.
+    if (this.autoMiners.some(m => m !== miner && m.asteroidId === asteroid.id)) {
+      this.retireDesignationsForAsteroid(asteroid.id)
+      this.designations.push({ id: nanoid(), asteroidId: asteroid.id, status: 'fulfilled', claimedByShipId: null })
+      designationQueue.set([...this.designations])
+      ship.asteroidTarget = null
+      this.departShipForBase(ship)
+      return
+    }
+
     // Transfer nets from NetStore: MINER_INITIAL_NETS spares + 1 active = total MINER_INITIAL_NETS + 1
     const netStoreSlot = ship.attachmentPoints.find(
       ap => ap.payload?.kind === 'net-store',
@@ -1663,9 +1675,16 @@ export class SpaceScene extends Phaser.Scene {
     miner.setPosition(ship.x, ship.y)
     miner.setVisible(true)
 
-    // Fulfil any designation claimed by this ship
+    // Ensure a fulfilled designation marks this asteroid as being mined, even if
+    // the claimed designation was removed by an un-designate mid-delivery (so it
+    // cannot be re-designated and a second miner stacked on top).
     const claimedDesig = this.designations.find(d => d.claimedByShipId === ship.id)
-    if (claimedDesig) this.fulfillDesignation(claimedDesig.id)
+    if (claimedDesig) {
+      this.fulfillDesignation(claimedDesig.id)
+    } else if (!this.designations.some(d => d.asteroidId === asteroid.id)) {
+      this.designations.push({ id: nanoid(), asteroidId: asteroid.id, status: 'fulfilled', claimedByShipId: null })
+      designationQueue.set([...this.designations])
+    }
 
     const destX = asteroid.x
     const destY = asteroid.y - 20
@@ -2003,6 +2022,9 @@ export class SpaceScene extends Phaser.Scene {
 
   addDesignation(asteroidId: string): void {
     if (this.designations.some(d => d.asteroidId === asteroidId)) return
+    // Do not designate an asteroid that already has a miner deployed/deploying there
+    // (e.g. after an un-designate mid-delivery left it mined but un-designated).
+    if (this.autoMiners.some(m => m.asteroidId === asteroidId)) return
     const entry: MiningDesignation = { id: nanoid(), asteroidId, status: 'queued', claimedByShipId: null }
     this.designations.push(entry)
     designationQueue.set([...this.designations])
