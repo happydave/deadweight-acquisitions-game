@@ -33,6 +33,7 @@ export const HAULER_FUEL_EMERGENCY_RESERVE = 100
 export const HAULER_BATTERY_MAX = 100
 export const HAULER_BATTERY_CHARGE_RATE = 0.5
 export const HAULER_RCS_MAX = 100
+export const HAULER_RCS_DRAIN_MANEUVER = 2
 
 export function generateShipTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(SHIP_TEXTURE_KEY)) return
@@ -183,6 +184,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         break
       case 'entering-hangar':
         this.setVelocity(0, 0)
+        this.rcsFuel = Math.max(0, this.rcsFuel - HAULER_RCS_DRAIN_MANEUVER * dt)
         break
       case 'deploying-miner':
       case 'waiting-at-asteroid':
@@ -190,6 +192,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       case 'resupplying-miner':
       case 'loading-miner':
         this.setVelocity(0, 0)
+        this.rcsFuel = Math.max(0, this.rcsFuel - HAULER_RCS_DRAIN_MANEUVER * dt)
         break
       case 'coasting':
         this.setVelocity(0, 0)
