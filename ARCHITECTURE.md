@@ -38,7 +38,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Inputs: `GameSaveService.hasSave()` (determines whether CONTINUE button appears)
   - Outputs: `GameSaveService.clear()` on NEW GAME; transitions to SpaceScene
 
-- **SpaceScene** `/src/scenes/SpaceScene.ts` (1691 lines — primary game orchestrator)
+- **SpaceScene** `/src/scenes/SpaceScene.ts` (~2580 lines — primary game orchestrator)
   - Inputs: commandQueue store (UI commands), keyboard/mouse/pointer events
   - Outputs: all Svelte writable stores; `GameSaveService.save()` every 10s and on `beforeunload`
   - Owns: entity lifecycle (spawn, update, destroy), camera, minimap, starfield, autoDispatch loop, save/load coordination
@@ -47,7 +47,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **dispatchLogic** `/src/scenes/dispatchLogic.ts`
   - Inputs: `SlottedShip[]`, `LocatedAsteroid[]`, `Set<string>` (occupied asteroid IDs)
   - Outputs: nearest eligible ship or asteroid (pure return values, no side effects)
-  - Exports: `shipHasFreeMediumSlot(ship)`, `selectDispatchTarget(ships, target)`, `selectDeployTarget(asteroids, ship, occupiedIds)`
+  - Exports: `shipHasFreeMediumSlot(ship)`, `selectDispatchTarget(ships, target)`, `selectHaulerForDesignation(ships, hasStoredMiner, isMinerEmpty?)`, `selectDeployTarget(asteroids, ship, occupiedIds)` (the last is retained/tested but no longer called by the scene since deployment became designation-driven)
   - No Phaser dependency — uses structural interfaces `SlottedShip` and `LocatedAsteroid`; tested independently via Vitest
 
 - **Asteroid** `/src/entities/Asteroid.ts`
@@ -59,8 +59,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Inputs: per-frame `update(dt)` call from SpaceScene, state mutations from SpaceScene methods
   - Outputs: `selectedShip` store via `pushToStore()`; emits `'begin-unloading'`, `'unload-complete'` events
   - State machine: `idle` → `traveling-to-asteroid` → `deploying-miner` → `waiting-at-asteroid` → `collecting-nets` → `traveling-to-base` → `unloading` → `idle`; also `responding-to-beacon` → `loading-miner`; `resupplying-miner`
-  - Key fields: `attachmentPoints: AttachmentPoint[]` (1 small net-store + 1 small empty + 2 medium empty by default), `collectSlotProgress: Map<number, number>` (per-slot 0→1 progress during net collection), dual unload timers (`unloadTimer` for cargo bay, `attachUnloadTimer` for attachment nets)
-  - Constants: `SHIP_SPEED=180`, `UNLOAD_DURATION=3s`, `ATTACHMENT_UNLOAD_DURATION=1.5s`, `CARGO_CAPACITY_TIERS=[200,350,550,800]`
+  - Key fields: `attachmentPoints: AttachmentPoint[]` (1 small net-store + 1 small empty + 2 medium empty by default), `collectSlotProgress`, fuel/power tanks (`thrusterFuel`, `rcsFuel`, `battery`, `chargeToggle`), dock/hangar slot indices, and unload state (`unloadTimer` cargo bay; `attachUnloadTimer` + `attachUnloadActive` for the per-item timed attachment-unload phase). `drawSlotIndicators()` renders per-slot markers (empty / reserved / miner / net / net-store) below the hull each frame.
+  - Constants: `SHIP_SPEED=180`, `UNLOAD_DURATION=3s`, `ATTACHMENT_UNLOAD_DURATION=1.5s` (per item), `HAULER_ATTACH_MANEUVER_MS=1500`, fuel/RCS/battery rates, `CARGO_CAPACITY_TIERS=[200,350,550,800]`
 
 - **AutoMiner** `/src/entities/AutoMiner.ts` — `Phaser.GameObjects.Image`
   - Inputs: `updateMining(dt, asteroid)` call from SpaceScene when state is `'mining'`
@@ -72,13 +72,15 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **CargoNet** `/src/entities/CargoNet.ts` — `Phaser.GameObjects.Image`
   - Inputs: created by `AutoMiner.ejectNet()` or restored from save
   - Outputs: `selectedCargoNet` store; `quantity` and `resourceType` transferred to Base on unload
-  - States: `full-tethered` (at asteroid, visible), `in-transit` (being collected via tween), `unloading` (at base)
-  - Constants: `NET_LEAKAGE_FRACTION=0.05` (quantity loss on collection), `NET_COLLECT_DURATION_MS=2000`
+  - States: `full-tethered` (at a miner, or orphaned in free-orbit — both visible), `in-transit` (carried on a hauler slot), `unloading` (at base)
+  - Free-orbit fields (`freeOrbitalRadius`/`freeOrbitalAngle`) + `designatedForCollection`: when a miner is recovered without all its nets, the leftover nets are orphaned to free-orbit and stay recoverable via the player "designate for collection" action (never destroyed)
+  - Constants: `NET_LEAKAGE_FRACTION=0.05` (quantity loss on collection), `NET_COLLECT_DURATION_MS=1500`
 
 - **Base** `/src/entities/Base.ts` — `Phaser.GameObjects.Image`
-  - Inputs: `acceptCargo()`, `acceptMiner()`, `sellResource()`, `commissionShip()` calls from SpaceScene
-  - Outputs: `baseState` store via `pushToStore()`
-  - Constants: `BASE_STORAGE_CAPACITY=2000`, `STARTING_CREDITS=750`, `SHIP_COMMISSION_COST=500`
+  - Inputs: `acceptCargo()`, `sellResource()`, `commissionShip()`, `storeAutoMiner()`, station purchases (owned docks/hangars/miner slots, pressurization) from SpaceScene
+  - Outputs: `baseState` store via `pushToStore()` (storage, credits, fleet size, station miner count/slots, owned dock/hangar counts, pressurization, autoDesignate)
+  - Station: per-tier service slots (docks for fast transfer; hangar bays for slow upgrade/repair/storage), owned-vs-public ownership (owned = low slot indices, public charges per-use fees), and a station autominer inventory (`stationMinerIds`, cap `STATION_MINER_SLOT_CAP`)
+  - Constants: `BASE_STORAGE_CAPACITY`, `STARTING_CREDITS`, `SHIP_COMMISSION_COST` (and station purchase costs)
 
 - **Planet** `/src/entities/Planet.ts`
   - Visual-only; procedurally textured; at world origin; no game logic
@@ -86,15 +88,15 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **GameSaveService** `/src/services/GameSaveService.ts`
   - Inputs: `SaveState` plain objects; localStorage
   - Outputs: `SaveState | null` from `load()`; persists to localStorage on `save()`
-  - Schema version: 11 (current); `migrate()` uses fallthrough switch from v1→v11; each case upgrades one field and falls through
-  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into top-level cargoNets array; v11 clears legacy `cargoContents`
+  - Schema version: 21 (current); `migrate()` uses a fallthrough switch from v1→v21; each case upgrades one concern and falls through
+  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
 
 - **gameState** `/src/state/gameState.ts`
   - Type definitions only: `SaveState`, `ShipSnapshot`, `AutoMinerSnapshot`, `CargoNetSnapshot`, `AsteroidSnapshot`, `BaseSnapshot`
   - Not a Svelte store — holds the initial/default plain object for save state construction
 
 - **attachmentTypes** `/src/state/attachmentTypes.ts`
-  - Types: `AttachmentPoint`, `AttachmentPointSize`, `NetStorePayload`, `AutoMinerPayload`, `CargoNetPayload`, `AttachmentPayload`
+  - Types: `AttachmentPoint`, `AttachmentPointSize`, `NetStorePayload`, `AutoMinerPayload`, `CargoNetPayload`, `ReservedPayload` (a slot committed to an incoming miner/net before pickup — non-null so free-slot checks treat it as occupied; `kind` never matches a real payload), `AttachmentPayload`
   - `makeDefaultLoadout()`: returns `[small/net-store, small/empty, medium/empty, medium/empty]`
   - `NET_STORE_MAX_NETS=12`
 
@@ -104,17 +106,21 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Exports `ShipState` union type used by Ship entity and SpaceScene
 
 - **autoMinerStore** `/src/state/autoMinerStore.ts`
-  - Writable stores: `selectedAutoMiner`, `activeBeacons: BeaconData[]`, `autoMinerSummary: AutoMinerSummary`, `attachNotifications: AttachNotification[]`
+  - Writable stores: `selectedAutoMiner`, `activeBeacons: BeaconData[]`, `autoMinerSummary: AutoMinerSummary`, `attachNotifications: AttachNotification[]`, `minerAvailability: MinerAvailability` (outstanding designations vs. available miners — drives the shortage indicator)
 
 - **cargoNetStore** `/src/state/cargoNetStore.ts`
-  - Writable store: `selectedCargoNet: SelectedCargoNetData | null`
+  - Writable store: `selectedCargoNet: SelectedCargoNetData | null` (includes `orphaned` + `designatedForCollection`)
+
+- **designationStore** `/src/state/designationStore.ts`
+  - Writable store: `designationQueue: MiningDesignation[]`
+  - `MiningDesignation.status`: `queued | claimed | fulfilled` (fulfilled = a miner is deployed/mining; the entry persists until the asteroid depletes, marking it "being mined" and blocking re-designation)
 
 - **baseStore** `/src/state/baseStore.ts`
-  - Writable stores: `baseState: BaseState`, `basePanelOpen: boolean`
+  - Writable stores: `baseState: BaseState`, `basePanelOpen: boolean`, `stationUsage: StationUsage` (miner storage used/total; dock & hangar in-use/total/public — drives the Station Usage panel)
 
 - **commandStore** `/src/state/commandStore.ts`
   - Writable store: `commandQueue: GameCommand[]`
-  - `GameCommand` union: `sellResource`, `commissionShip`, `manualSave`, `upgradeShip`, `deployMiner`, `resupplyMiner`, `respondToBeacon`, `purchaseMiner`, `collectNets`
+  - `GameCommand` union: `sellResource`, `commissionShip`, `manualSave`, `upgradeShip`, `resupplyMiner`, `respondToBeacon`, `purchaseMiner`, `collectNets`, `purchaseMinerSlot`, `purchaseOwnedDock`, `purchaseHangar`, `purchasePressurization`, `designateAsteroid`, `undesignateAsteroid`, `collectNet`, `repairMiner`, `toggleAutoDesignate`, `toggleMinerCharge`
 
 - **fleetStore** `/src/state/fleetStore.ts`
   - Writable store: `fleetSummary: { idle, active, returning }`
@@ -139,14 +145,14 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Displays: resource storage, credits, fleet counts (idle/active/returning), miner counts (mining/net-starved/beaconing/dark), beacon list, attach notifications
 
 - **EntityPanel** `/src/ui/EntityPanel.svelte`
-  - Reads: `selectedShip`, `selectedAsteroid`, `selectedAutoMiner`, `selectedCargoNet`
-  - Writes: `commandQueue` (deployMiner, resupplyMiner, respondToBeacon, purchaseMiner, collectNets, upgradeShip)
-  - Displays: ship detail (state, cargo, attachment slots with per-slot progress bars), asteroid detail, miner detail, net detail
+  - Reads: `selectedShip`, `selectedAsteroid`, `selectedAutoMiner`, `selectedCargoNet`, `designationQueue`
+  - Writes: `commandQueue` (resupplyMiner, respondToBeacon, purchaseMiner, collectNets, upgradeShip, designate/un-designate asteroid, collectNet, repairMiner, toggleMinerCharge)
+  - Displays: ship detail (state, cargo, attachment slots, fuel/RCS/battery meters), asteroid detail (+ designate / "being mined"), miner detail (condition/battery/RCS), net detail (+ "designate for collection" when orphaned)
 
 - **BasePanel** `/src/ui/BasePanel.svelte`
-  - Reads: `baseState`, `basePanelOpen`, `selectedShip`
-  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip)
-  - Displays: market (sell resources), ship commission, cargo upgrades
+  - Reads: `baseState`, `basePanelOpen`, `selectedShip`, `stationUsage`
+  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip, purchase owned dock/hangar/miner-slot/pressurization)
+  - Displays: market, ship commission, cargo upgrades, station purchases, and a Station Usage section (miner storage; dock/hangar in-use with public-fee notes)
 
 ---
 
@@ -216,45 +222,51 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
    c. Camera configured; input handlers attached; beforeunload handler registered
 ```
 
-### AutoMiner mining lifecycle
+### AutoMiner mining lifecycle (designation-driven)
 ```
-1. SpaceScene.autoDispatch() runs every 4s (accumulated in update()):
-   a. Iterates asteroids with tethered nets → selectDispatchTarget(ships, asteroid) → nearest idle Ship with free medium slot
-   b. 'net-starved' AutoMiners → same dispatch path
-   c. Ships with in-transit miners but no asteroidTarget → selectDeployTarget() → assign asteroid
-2. Ship.shipState = 'traveling-to-asteroid'; Ship.pushToStore() → selectedShip store → EntityPanel updates
-3. Ship arrives within MINER_DEPLOY_PROXIMITY → SpaceScene.performDeploy():
-   a. Tween AutoMiner from ship position to asteroid; miner.setVisible(true)
-   b. beginAttachAttempt() with ATTACH_FAILURE_PROB=0.25, up to ATTACH_MAX_RETRIES=3
-   c. On success: miner.state = 'mining'; miner.asteroidId = asteroid.id
-4. SpaceScene.update() per-frame: AutoMiner.updateMining(dt, asteroid):
-   a. Extracts MINER_RATE=5 units/s from asteroid.currentQuantity
-   b. When activeNetFill >= NET_CAPACITY=50: ejectNet() → new CargoNet created → tetheredNetIds updated
-   c. If spareNetCount > 0: spareNetCount--; state = 'mining'; else: state = 'net-starved'; startBeacon()
-   d. If asteroid.currentQuantity <= 0: state = 'standby-beaconing'; startBeacon()
-5. AutoMiner.startBeacon(): fires 'beacon-emitted' event every BEACON_INTERVAL_MS=3000ms → SpaceScene adds to activeBeacons store
-6. SpaceScene.autoDispatch() picks up 'net-starved' miner → dispatches hauler ship
-7. Ship arrives at asteroid → shipState = 'collecting-nets' (SpaceScene.beginCollecting()):
-   a. ship.beginCollecting() called (clears collectSlotProgress)
-   b. collectSlotProgress entries initialized AFTER beginCollecting() for each net being collected
-   c. Tween each CargoNet from asteroid toward ship over NET_COLLECT_DURATION_MS=2000ms
-   d. onUpdate: ship.collectSlotProgress.set(slotIdx, progress) → ship.pushToStore() → EntityPanel amber bars
-   e. onComplete: CargoNet.state = 'in-transit'; net attached to ship medium slot payload; net.setVisible(false)
-8. Ship departs → shipState = 'traveling-to-base' → steers toward base position
-9. Ship arrives at base → Ship.beginUnloading():
-   a. Cargo bay timer (3s, blue bar): only if cargoContents has non-zero values
-   b. Attachment net timer (1.5s, amber bar): only if any medium slot holds cargo-net payload
-10. SpaceScene.processNetUnloading(): CargoNet.quantity → Base.acceptCargo() → base.storage updated
-11. Base.pushToStore() → baseState store → Hud.svelte updates resource display
-12. Ship.shipState = 'idle' when both timers complete
+1. Player (or auto-designate-arrivals) designates an asteroid → 'designateAsteroid'
+   command → addDesignation() enqueues a MiningDesignation (status 'queued').
+2. SpaceScene.autoDispatch() (every 4s) does, in order:
+   a. Idle carriers at base: recharge their in-transit miners and store them in
+      station storage (deployment never auto-targets arbitrary asteroids).
+   b. Reconcile fulfilled designations: a 'fulfilled' designation whose asteroid
+      has no attached miner reverts to 'queued' (re-dispatch).
+   c. For each queued designation (skipping asteroids on attach cooldown):
+      selectHaulerForDesignation() picks an idle hauler — preferring one already
+      carrying an (empty) miner, else routing one to fetch a stored miner first;
+      claimDesignation() marks it 'claimed'.
+   d. Net-starved / full-net miners → dispatch a hauler to the asteroid.
+   e. Designated orphaned nets → initiateCollectOrphanNet() sends a hauler.
+3. Carrier arrives within MINER_DEPLOY_PROXIMITY → performDeploy(): tween miner to
+   asteroid; fulfillDesignation() (→ 'fulfilled'); beginAttachAttempt()
+   (ATTACH_FAILURE_PROB, up to ATTACH_MAX_RETRIES; condition raises fail chance,
+   below threshold a catastrophic-loss roll). On success: state 'mining'. On
+   exhaustion: hauler returns to base, the asteroid gets an ATTACH_COOLDOWN_MS.
+4. AutoMiner.updateMining(dt, asteroid): extracts MINER_RATE; ejects a CargoNet at
+   NET_CAPACITY (→ tethered); drains battery (≤20% begins beaconing while mining;
+   ≤10% stops mining; 0 → 'dark'); depletion → 'standby-beaconing'.
+5. Beacons fire 'beacon-emitted' every BEACON_INTERVAL_MS → activeBeacons store.
+6. Collection: beginCollecting() reserves a slot per net and tweens each over
+   NET_COLLECT_DURATION_MS, converting the reservation to the real cargo-net on
+   completion (per-slot amber progress bars).
+7. Recovery: a hauler dispatched to a beacon reserves a medium slot on dispatch
+   (initiateRespondToBeacon); performRecovery() resolves the reservation to the
+   real miner on arrival. A miner's nets that do not fit are orphaned to free-orbit
+   (recoverable), never destroyed.
+8. Return + unload at base: cargo bay drains over UNLOAD_DURATION; the per-item
+   attachment-unload phase (processAttachmentUnloadTick) drains one net OR stores+
+   recharges one in-transit miner per ATTACHMENT_UNLOAD_DURATION. Ship → 'idle'
+   when both are done.
 ```
 
 ### UI command flow
 ```
 1. User clicks action in EntityPanel or BasePanel → commandQueue.update(q => [...q, cmd])
 2. SpaceScene.update() → drainCommandQueue(): commandQueue.update(q => []) → handleCommand(cmd) for each
-3. handleCommand() dispatches to: initiateDeployMiner(), initiateCollectNets(), initiateResupplyMiner(),
-   initiateRespondToBeacon(), performPurchaseMiner(), commissionNewShip(), applyShipUpgrade(), etc.
+3. handleCommand() dispatches to: addDesignation()/removeDesignation(),
+   initiateCollectNets(), initiateResupplyMiner(), initiateRespondToBeacon(),
+   collectNet (designate orphaned net), performPurchaseMiner(), commissionNewShip(),
+   initiateShipUpgrade(), initiateRepair(), station purchases, toggles, etc.
 ```
 
 ### Save / load cycle
@@ -268,9 +280,42 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 ---
 
+## Phase 3 Systems
+
+- **Mining designation queue** (`designationStore`): clicking an asteroid enqueues
+  a `MiningDesignation`. Lifecycle `queued → claimed → fulfilled`; a fulfilled
+  entry persists (asteroid "being mined", re-designation blocked) until depletion
+  retires it. autoDispatch reconciles a fulfilled designation back to queued if its
+  asteroid loses its miner. Deployment is designation-only — no auto-deploy to
+  arbitrary asteroids.
+- **Attachment slot reservation model**: a slot a hauler is travelling to fill
+  holds a `reserved` payload (not the real miner/net) until pickup, resolved via
+  `resolveReservation`/`claimFreeMediumSlot`. Over-capacity recovery orphans
+  leftover nets to free-orbit (player-designated collection), never destroying
+  them.
+- **Pricing seam** (`/src/world/pricingSeam.ts`): single `getPrice(key)` lookup for
+  all consumable prices and service fees (fixed values in Phase 3; the integration
+  point for Phase 4 dynamic pricing).
+- **Condition / repair**: each autominer has a condition value; failed attaches
+  degrade it along a bounded penalty curve (attach-fail + mining-rate, capped),
+  and below a low threshold an attach may catastrophically destroy the miner.
+  Repair is a timed hangar-bay service.
+- **Station services**: docks (fast transfer — drop-off, refuel/recharge) and
+  hangar bays (slow — upgrade, repair, miner storage), each public (per-use fee)
+  or owned (purchased, fee-free); owned slots are the low indices. `stationUsage`
+  surfaces utilization.
+- **Fuel & power**: haulers hold thruster fuel (transit, trickle-charges battery),
+  RCS gas (maneuvering, incl. the attach maneuver), and a small battery;
+  autominers hold a large battery (mining/beaconing drain) and an RCS tank
+  (attaching). Recharge is the priced electricity sink; parked fleet draws nothing
+  (idle-cost guarantee).
+
+---
+
 ## Known Gaps
 
 - `Planet.ts` not traced — visual only; no inputs or outputs to document
 - Minimap rendering (`drawMinimap()`) is fully internal to SpaceScene — no external interface
 - `rng.ts` test file at `/src/world/rng.test.ts` covers seeded RNG; `dispatchLogic.test.ts` at `/src/scenes/dispatchLogic.test.ts` covers dispatch pure functions — no other test coverage
-- Station orbiting is not yet implemented; `Base` is stationary at world origin
+- Station/base orbiting is not yet implemented (WI-458 pending); `Base` is stationary at fixed `BASE_X/BASE_Y`
+- The `#5`/`#8` slot-overrun reports are believed closed by the reservation model (WI-467/468); no deterministic repro was captured
