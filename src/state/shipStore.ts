@@ -34,6 +34,7 @@ export interface SelectedShipData {
   thrusterFuel: number
   rcsFuel: number
   battery: number
+  chargeToggle: boolean
 }
 
 export interface SelectedAsteroidData {

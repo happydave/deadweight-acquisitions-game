@@ -263,6 +263,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 20:
+      // v20 → v21: add chargeToggle: false to every ship
+      raw = {
+        ...raw,
+        schemaVersion: 21,
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          chargeToggle: false,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 21:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

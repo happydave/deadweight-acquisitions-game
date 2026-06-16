@@ -31,6 +31,8 @@ import {
   HAULER_FUEL_MAX,
   HAULER_RCS_MAX,
   HAULER_BATTERY_MAX,
+  HAULER_FIELD_CHARGE_FUEL_RATE,
+  HAULER_FIELD_CHARGE_BATTERY_RATE,
 } from '../entities/Ship'
 
 import {
@@ -339,6 +341,7 @@ export class SpaceScene extends Phaser.Scene {
       ship.thrusterFuel = snap.thrusterFuel ?? HAULER_FUEL_MAX
       ship.rcsFuel = snap.rcsFuel ?? HAULER_RCS_MAX
       ship.battery = snap.battery ?? HAULER_BATTERY_MAX
+      ship.chargeToggle = snap.chargeToggle ?? false
       ship.cargoUpgradeLevel = snap.cargoUpgradeLevel
       ship.cargoCapacity = CARGO_CAPACITY_TIERS[snap.cargoUpgradeLevel]
       ship.attachmentPoints = snap.attachmentPoints
@@ -466,7 +469,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 20,
+      schemaVersion: 21,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -513,6 +516,7 @@ export class SpaceScene extends Phaser.Scene {
         thrusterFuel: s.thrusterFuel,
         rcsFuel: s.rcsFuel,
         battery: s.battery,
+        chargeToggle: s.chargeToggle,
       })),
       autoMiners: this.autoMiners.map(m => ({
         id: m.id,
@@ -1214,6 +1218,12 @@ export class SpaceScene extends Phaser.Scene {
     } else if (cmd.type === 'toggleAutoDesignate') {
       this.base.autoDesignate = !this.base.autoDesignate
       this.base.pushToStore()
+    } else if (cmd.type === 'toggleMinerCharge') {
+      const ship = this.ships.find(s => s.id === cmd.shipId)
+      if (ship) {
+        ship.chargeToggle = !ship.chargeToggle
+        ship.pushToStore()
+      }
     }
   }
 
@@ -2036,6 +2046,19 @@ export class SpaceScene extends Phaser.Scene {
           miner.pushToStore()
         }
       }
+    }
+
+    // Field recharge: ships with chargeToggle on transfer fuel to attached miner's battery
+    for (const ship of this.ships) {
+      if (!ship.chargeToggle || ship.shipState !== 'waiting-at-asteroid') continue
+      const minerSlot = ship.attachmentPoints.find(ap => ap.payload?.kind === 'auto-miner')
+      if (!minerSlot || !minerSlot.payload || minerSlot.payload.kind !== 'auto-miner') continue
+      const miner = this.autoMinerMap.get(minerSlot.payload.minerId)
+      if (!miner || miner.battery >= MINER_BATTERY_MAX) continue
+      ship.thrusterFuel = Math.max(0, ship.thrusterFuel - HAULER_FIELD_CHARGE_FUEL_RATE * dt)
+      miner.battery = Math.min(MINER_BATTERY_MAX, miner.battery + HAULER_FIELD_CHARGE_BATTERY_RATE * dt)
+      miner.pushToStore()
+      ship.pushToStore()
     }
 
     // Update free-orbiting miner positions (asteroid depleted, miner detached)

@@ -18,5 +18,6 @@ export type GameCommand =
   | { type: 'undesignateAsteroid'; asteroidId: string }
   | { type: 'repairMiner'; minerId: string }
   | { type: 'toggleAutoDesignate' }
+  | { type: 'toggleMinerCharge'; shipId: string }
 
 export const commandQueue = writable<GameCommand[]>([])

@@ -62,6 +62,7 @@ export interface ShipSnapshot {
   thrusterFuel: number
   rcsFuel: number
   battery: number
+  chargeToggle: boolean
 }
 
 export interface BaseSnapshot {

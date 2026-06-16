@@ -141,6 +141,15 @@
         </div>
       {/if}
     {/each}
+    {#if $selectedShip.state === 'waiting-at-asteroid'}
+      <div class="row">
+        <span class="label">Miner Charge</span>
+        <button
+          class="toggle-btn {$selectedShip.chargeToggle ? 'active' : ''}"
+          on:click={() => commandQueue.update(q => [...q, { type: 'toggleMinerCharge', shipId: $selectedShip!.id }])}
+        >{$selectedShip.chargeToggle ? 'ON' : 'OFF'}</button>
+      </div>
+    {/if}
   </div>
 {:else if $selectedAsteroid}
   {@const designation = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id) ?? null}
@@ -312,6 +321,29 @@
   }
 
   .action-btn:hover {
+    background: rgba(60, 110, 160, 0.9);
+    border-color: #6aaccf;
+  }
+
+  .toggle-btn {
+    background: rgba(40, 80, 120, 0.8);
+    border: 1px solid #4a8aaa;
+    border-radius: 3px;
+    color: #88ddff;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  .toggle-btn.active {
+    background: rgba(60, 130, 80, 0.8);
+    border-color: #4aaa66;
+    color: #88ffaa;
+  }
+
+  .toggle-btn:hover {
     background: rgba(60, 110, 160, 0.9);
     border-color: #6aaccf;
   }

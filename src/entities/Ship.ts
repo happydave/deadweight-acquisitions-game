@@ -34,6 +34,8 @@ export const HAULER_BATTERY_MAX = 100
 export const HAULER_BATTERY_CHARGE_RATE = 0.5
 export const HAULER_RCS_MAX = 100
 export const HAULER_RCS_DRAIN_MANEUVER = 2
+export const HAULER_FIELD_CHARGE_FUEL_RATE = 5
+export const HAULER_FIELD_CHARGE_BATTERY_RATE = 20
 
 export function generateShipTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(SHIP_TEXTURE_KEY)) return
@@ -73,6 +75,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   thrusterFuel: number
   rcsFuel: number
   battery: number
+  chargeToggle: boolean
   collectSlotProgress: Map<number, number> = new Map()
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
@@ -104,6 +107,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.thrusterFuel = HAULER_FUEL_MAX
     this.rcsFuel = HAULER_RCS_MAX
     this.battery = HAULER_BATTERY_MAX
+    this.chargeToggle = false
     this.isSelected = false
 
     scene.add.existing(this)
@@ -390,6 +394,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       thrusterFuel: this.thrusterFuel,
       rcsFuel: this.rcsFuel,
       battery: this.battery,
+      chargeToggle: this.chargeToggle,
     })
   }
 }
