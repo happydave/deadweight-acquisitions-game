@@ -228,6 +228,7 @@ export class SpaceScene extends Phaser.Scene {
     this.base.hangarPressurized = save.base.hangarPressurized ?? false
     this.base.stationMinerSlotCount = save.base.stationMinerSlotCount ?? 0
     this.base.stationMinerIds = [...(save.base.stationMinerIds ?? [])]
+    this.base.autoDesignate = save.base.autoDesignate ?? false
     this.base.pushToStore()
 
     this.add
@@ -449,7 +450,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 17,
+      schemaVersion: 18,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -460,6 +461,7 @@ export class SpaceScene extends Phaser.Scene {
         hangarPressurized: this.base.hangarPressurized,
         stationMinerSlotCount: this.base.stationMinerSlotCount,
         stationMinerIds: [...this.base.stationMinerIds],
+        autoDesignate: this.base.autoDesignate,
       },
       asteroids: this.asteroids.map(a => ({
         id: a.id,
@@ -1089,6 +1091,9 @@ export class SpaceScene extends Phaser.Scene {
     const asteroid = new Asteroid(this, data)
     this.asteroids.push(asteroid)
     this.asteroidMap.set(asteroid.id, asteroid)
+    if (this.base.autoDesignate) {
+      this.addDesignation(asteroid.id)
+    }
   }
 
   private buildStarLayers(): void {
@@ -1167,6 +1172,9 @@ export class SpaceScene extends Phaser.Scene {
       this.removeDesignation(cmd.asteroidId)
     } else if (cmd.type === 'repairMiner') {
       this.initiateRepair(cmd.minerId)
+    } else if (cmd.type === 'toggleAutoDesignate') {
+      this.base.autoDesignate = !this.base.autoDesignate
+      this.base.pushToStore()
     }
   }
 

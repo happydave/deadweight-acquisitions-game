@@ -76,6 +76,10 @@
   function purchasePressurization(): void {
     commandQueue.update(q => [...q, { type: 'purchasePressurization' }])
   }
+
+  function toggleAutoDesignate(): void {
+    commandQueue.update(q => [...q, { type: 'toggleAutoDesignate' }])
+  }
 </script>
 
 {#if $basePanelOpen}
@@ -189,6 +193,16 @@
           on:click={purchasePressurization}
         >Buy</button>
       {/if}
+    </div>
+
+    <!-- Automation -->
+    <div class="section-title">AUTOMATION</div>
+    <div class="row shipyard-row">
+      <span class="label">Auto-Designate</span>
+      <span class="value">{$baseState.autoDesignate ? 'ON' : 'OFF'}</span>
+      <button class="toggle-btn" on:click={toggleAutoDesignate}>
+        {$baseState.autoDesignate ? 'Disable' : 'Enable'}
+      </button>
     </div>
 
     <!-- Fees -->
@@ -339,6 +353,22 @@
     cursor: pointer;
     padding: 2px 6px;
     white-space: nowrap;
+  }
+
+  .toggle-btn {
+    background: rgba(40, 80, 120, 0.6);
+    border: 1px solid #2a5a8a;
+    border-radius: 3px;
+    color: #aaccee;
+    font-family: monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+
+  .toggle-btn:hover {
+    background: rgba(60, 100, 150, 0.7);
   }
 
   .sell-btn:hover:not(:disabled),

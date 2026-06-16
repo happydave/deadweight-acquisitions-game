@@ -39,6 +39,7 @@ export class Base extends Phaser.GameObjects.Image {
   hangarPressurized: boolean
   stationMinerSlotCount: number
   stationMinerIds: string[]
+  autoDesignate: boolean
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -51,6 +52,7 @@ export class Base extends Phaser.GameObjects.Image {
     this.hangarPressurized = false
     this.stationMinerSlotCount = 0
     this.stationMinerIds = []
+    this.autoDesignate = false
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -180,6 +182,7 @@ export class Base extends Phaser.GameObjects.Image {
       ownedDockCount: this.ownedDockCount,
       ownedHangarCount: this.ownedHangarCount,
       hangarPressurized: this.hangarPressurized,
+      autoDesignate: this.autoDesignate,
     })
   }
 }

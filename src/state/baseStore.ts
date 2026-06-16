@@ -11,6 +11,7 @@ export interface BaseState {
   ownedDockCount: number
   ownedHangarCount: number
   hangarPressurized: boolean
+  autoDesignate: boolean
 }
 
 export const baseState = writable<BaseState>({
@@ -23,6 +24,7 @@ export const baseState = writable<BaseState>({
   ownedDockCount: 0,
   ownedHangarCount: 0,
   hangarPressurized: false,
+  autoDesignate: false,
 })
 
 export const basePanelOpen = writable<boolean>(false)

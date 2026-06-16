@@ -228,6 +228,14 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 17:
+      // v17 → v18: add autoDesignate flag to base
+      raw = {
+        ...raw,
+        schemaVersion: 18,
+        base: { ...(raw.base as unknown as Record<string, unknown>), autoDesignate: false },
+      } as unknown as SaveState
+      // falls through
+    case 18:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)
