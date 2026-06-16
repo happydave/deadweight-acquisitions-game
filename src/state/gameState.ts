@@ -36,6 +36,8 @@ export interface AutoMinerSnapshot {
   spareNetCount: number
   activeNetFill: number
   tetheredNetIds: string[]
+  battery: number
+  rcsFuel: number
 }
 
 export interface ShipSnapshot {

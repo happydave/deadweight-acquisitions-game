@@ -90,6 +90,14 @@
         <span class="label">Service</span>
         <span class="value state-am-station-repair">Repairing…</span>
       </div>
+    {:else if $selectedAutoMiner.state === 'dark'}
+      <div class="row">
+        <span class="label">Battery exhausted</span>
+        <button
+          class="action-btn"
+          on:click={() => commandQueue.update(q => [...q, { type: 'respondToBeacon', minerId: $selectedAutoMiner!.id }])}
+        >Recover</button>
+      </div>
     {/if}
   </div>
 {:else if $selectedShip}

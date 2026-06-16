@@ -9,6 +9,8 @@ export interface SelectedAutoMinerData {
   activeNetFill: number
   spareNetCount: number
   tetheredNetCount: number
+  battery: number
+  rcsFuel: number
 }
 
 export interface BeaconData {

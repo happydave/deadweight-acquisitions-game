@@ -41,6 +41,12 @@ export const CONDITION_MAX_PENALTY = 0.5
 export const CATASTROPHIC_FAIL_PROB = 0.2
 export const MINER_REPAIR_DURATION_MS = 5000
 
+export const MINER_BATTERY_MAX = 200
+export const MINER_BATTERY_DRAIN_MINING = 2
+export const MINER_BATTERY_DRAIN_BEACONING = 0.05
+export const MINER_RCS_MAX = 50
+export const MINER_RCS_DRAIN_PER_ATTACH = 10
+
 export function conditionPenaltyFraction(condition: number): number {
   if (condition >= CONDITION_GRACE_THRESHOLD) return 0
   if (condition < CONDITION_CAP_THRESHOLD) return 1
@@ -96,6 +102,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   isSelected: boolean
   freeOrbitalRadius: number | null = null
   freeOrbitalAngle: number | null = null
+  battery: number
+  rcsFuel: number
   private beaconTimer: Phaser.Time.TimerEvent | null = null
 
   constructor(scene: Phaser.Scene, id?: string) {
@@ -108,6 +116,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     this.activeNetFill = 0
     this.tetheredNetIds = []
     this.technologyLevel = 1
+    this.battery = MINER_BATTERY_MAX
+    this.rcsFuel = MINER_RCS_MAX
     this.isSelected = false
 
     scene.add.existing(this)
@@ -118,6 +128,14 @@ export class AutoMiner extends Phaser.GameObjects.Image {
 
   updateMining(dt: number, asteroid: Asteroid): void {
     if (this.state !== 'mining') return
+
+    this.battery = Math.max(0, this.battery - MINER_BATTERY_DRAIN_MINING * dt)
+    if (this.battery <= 0) {
+      this.stopBeacon()
+      this.state = 'dark'
+      this.pushToStore()
+      return
+    }
 
     const effectiveRate = MINER_RATE * (1 - CONDITION_MAX_PENALTY * conditionPenaltyFraction(this.condition))
     const extracted = Math.min(effectiveRate * dt, asteroid.currentQuantity)
@@ -228,6 +246,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
       activeNetFill: this.activeNetFill,
       spareNetCount: this.spareNetCount,
       tetheredNetCount: this.tetheredNetIds.length,
+      battery: this.battery,
+      rcsFuel: this.rcsFuel,
     })
   }
 

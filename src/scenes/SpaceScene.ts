@@ -49,6 +49,10 @@ import {
   CONDITION_CAP_THRESHOLD,
   CATASTROPHIC_FAIL_PROB,
   MINER_REPAIR_DURATION_MS,
+  MINER_BATTERY_MAX,
+  MINER_BATTERY_DRAIN_BEACONING,
+  MINER_RCS_MAX,
+  MINER_RCS_DRAIN_PER_ATTACH,
   conditionPenaltyFraction,
   type AutoMinerState,
 } from '../entities/AutoMiner'
@@ -249,6 +253,8 @@ export class SpaceScene extends Phaser.Scene {
       const miner = new AutoMiner(this, snap.id)
       miner.state = snap.state
       miner.condition = snap.condition ?? 1
+      miner.battery = snap.battery ?? MINER_BATTERY_MAX
+      miner.rcsFuel = snap.rcsFuel ?? MINER_RCS_MAX
       miner.asteroidId = snap.asteroidId
       miner.spareNetCount = snap.spareNetCount
       miner.activeNetFill = snap.activeNetFill
@@ -460,7 +466,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 19,
+      schemaVersion: 20,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -519,6 +525,8 @@ export class SpaceScene extends Phaser.Scene {
         spareNetCount: m.spareNetCount,
         activeNetFill: m.activeNetFill,
         tetheredNetIds: [...m.tetheredNetIds],
+        battery: m.battery,
+        rcsFuel: m.rcsFuel,
       })),
       cargoNets: this.cargoNets
         .filter(n => n.state === 'full-tethered')
@@ -1265,7 +1273,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private initiateRespondToBeacon(minerId: string): void {
     const miner = this.autoMinerMap.get(minerId)
-    if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck')) return
+    if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck' && miner.state !== 'dark')) return
 
     const nearestIdle = this.ships
       .filter(s => s.shipState === 'idle')
@@ -1463,6 +1471,8 @@ export class SpaceScene extends Phaser.Scene {
       this.attachRetryCount.delete(ship.id)
       return
     }
+
+    miner.rcsFuel = Math.max(0, miner.rcsFuel - MINER_RCS_DRAIN_PER_ATTACH)
 
     const effectiveFailProb = ATTACH_FAILURE_PROB + CONDITION_MAX_PENALTY * conditionPenaltyFraction(miner.condition)
     if (Math.random() >= effectiveFailProb) {
@@ -2011,6 +2021,19 @@ export class SpaceScene extends Phaser.Scene {
           if (asteroid.currentQuantity <= 0 && this.asteroidMap.has(asteroid.id)) {
             this.removeDepletedAsteroid(asteroid, miner)
           }
+        }
+      }
+    }
+
+    // Drain beaconing/stuck miner battery
+    for (const miner of this.autoMiners) {
+      if (miner.state === 'standby-beaconing' || miner.state === 'stuck') {
+        miner.battery = Math.max(0, miner.battery - MINER_BATTERY_DRAIN_BEACONING * dt)
+        if (miner.battery <= 0) {
+          miner.stopBeacon()
+          miner.state = 'dark'
+          activeBeacons.update(beacons => beacons.filter(b => b.id !== miner.id))
+          miner.pushToStore()
         }
       }
     }
