@@ -3,7 +3,7 @@
   import { selectedAutoMiner } from '../state/autoMinerStore'
   import { selectedCargoNet } from '../state/cargoNetStore'
   import { commandQueue } from '../state/commandStore'
-  import { NET_CAPACITY } from '../entities/AutoMiner'
+  import { NET_CAPACITY, CONDITION_CAP_THRESHOLD, CONDITION_GRACE_THRESHOLD } from '../entities/AutoMiner'
   import { designationQueue } from '../state/designationStore'
 
   function cargoTotal(contents: Record<string, number>): number {
@@ -12,6 +12,12 @@
 
   function cargoEntries(contents: Record<string, number>): [string, number][] {
     return Object.entries(contents).filter(([, qty]) => qty > 0)
+  }
+
+  function conditionClass(condition: number): string {
+    if (condition < CONDITION_CAP_THRESHOLD) return 'cond-critical'
+    if (condition < CONDITION_GRACE_THRESHOLD) return 'cond-degraded'
+    return 'cond-ok'
   }
 
   function slotLabel(size: string): string {
@@ -61,6 +67,13 @@
       <span class="label">Tethered</span>
       <span class="value">{$selectedAutoMiner.tetheredNetCount}</span>
     </div>
+    <div class="row">
+      <span class="label">Condition</span>
+      <span class="value {conditionClass($selectedAutoMiner.condition)}">{Math.round($selectedAutoMiner.condition * 100)}%</span>
+    </div>
+    {#if $selectedAutoMiner.condition < CONDITION_CAP_THRESHOLD}
+      <div class="cond-warning">⚠ Catastrophic failure risk</div>
+    {/if}
     {#if $selectedAutoMiner.state === 'net-starved'}
       <button
         class="action-btn"
@@ -313,6 +326,17 @@
   .state-am-net-starved            { color: #ff6644; }
   .state-am-standby-beaconing      { color: #ffaa44; }
   .state-am-station-repair         { color: #88ccdd; }
+
+  .cond-ok       { color: #cce0f0; }
+  .cond-degraded { color: #ffaa44; }
+  .cond-critical { color: #ff6644; }
+
+  .cond-warning {
+    font-size: 10px;
+    color: #ff6644;
+    margin-top: 4px;
+    margin-bottom: 2px;
+  }
 
   .desig-queued  { color: #88ffaa; }
   .desig-claimed { color: #ffdd88; }
