@@ -32,6 +32,17 @@ export const AUTOMINER_PURCHASE_COST = 300
 export const STATION_MINER_SLOT_CAP = 6
 export const MINER_TEXTURE_KEY = 'autominer'
 
+export const CONDITION_GRACE_THRESHOLD = 0.7
+export const CONDITION_CAP_THRESHOLD = 0.3
+export const CONDITION_DEGRADE_PER_FAIL = 0.1
+export const CONDITION_MAX_PENALTY = 0.5
+
+export function conditionPenaltyFraction(condition: number): number {
+  if (condition >= CONDITION_GRACE_THRESHOLD) return 0
+  if (condition < CONDITION_CAP_THRESHOLD) return 1
+  return (CONDITION_GRACE_THRESHOLD - condition) / (CONDITION_GRACE_THRESHOLD - CONDITION_CAP_THRESHOLD)
+}
+
 export function generateAutoMinerTexture(scene: Phaser.Scene): void {
   if (scene.textures.exists(MINER_TEXTURE_KEY)) return
   const w = 14
@@ -72,6 +83,7 @@ export function generateAutoMinerTexture(scene: Phaser.Scene): void {
 export class AutoMiner extends Phaser.GameObjects.Image {
   readonly id: string
   state: AutoMinerState
+  condition: number
   asteroidId: string | null
   spareNetCount: number
   activeNetFill: number
@@ -86,6 +98,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     super(scene, 0, 0, MINER_TEXTURE_KEY)
     this.id = id ?? nanoid()
     this.state = 'in-transit'
+    this.condition = 1.0
     this.asteroidId = null
     this.spareNetCount = 0
     this.activeNetFill = 0
@@ -102,7 +115,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   updateMining(dt: number, asteroid: Asteroid): void {
     if (this.state !== 'mining') return
 
-    const extracted = Math.min(MINER_RATE * dt, asteroid.currentQuantity)
+    const effectiveRate = MINER_RATE * (1 - CONDITION_MAX_PENALTY * conditionPenaltyFraction(this.condition))
+    const extracted = Math.min(effectiveRate * dt, asteroid.currentQuantity)
     asteroid.currentQuantity -= extracted
     this.activeNetFill += extracted
     asteroid.pushToStore()
@@ -205,6 +219,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     selectedAutoMiner.set({
       id: this.id,
       state: this.state,
+      condition: this.condition,
       asteroidId: this.asteroidId,
       activeNetFill: this.activeNetFill,
       spareNetCount: this.spareNetCount,

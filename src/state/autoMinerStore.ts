@@ -4,6 +4,7 @@ import type { AutoMinerState } from '../entities/AutoMiner'
 export interface SelectedAutoMinerData {
   id: string
   state: AutoMinerState
+  condition: number
   asteroidId: string | null
   activeNetFill: number
   spareNetCount: number

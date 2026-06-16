@@ -217,6 +217,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 16:
+      // v16 → v17: add condition: 1 to every autominer
+      raw = {
+        ...raw,
+        schemaVersion: 17,
+        autoMiners: (raw.autoMiners as unknown as Array<Record<string, unknown>>).map(m => ({
+          ...m,
+          condition: (m as { condition?: number }).condition ?? 1,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 17:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

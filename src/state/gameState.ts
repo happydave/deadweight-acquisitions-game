@@ -28,6 +28,7 @@ export interface CargoNetSnapshot {
 export interface AutoMinerSnapshot {
   id: string
   state: AutoMinerState
+  condition: number
   asteroidId: string | null
   freeOrbitalRadius: number | null
   freeOrbitalAngle: number | null

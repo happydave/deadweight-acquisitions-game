@@ -41,6 +41,9 @@ import {
   ATTACH_MAX_RETRIES,
   ATTACH_DRIFT_DURATION_MS,
   ATTACH_RETRY_DELAY_MS,
+  CONDITION_DEGRADE_PER_FAIL,
+  CONDITION_MAX_PENALTY,
+  conditionPenaltyFraction,
   type AutoMinerState,
 } from '../entities/AutoMiner'
 import {
@@ -236,6 +239,7 @@ export class SpaceScene extends Phaser.Scene {
     for (const snap of save.autoMiners) {
       const miner = new AutoMiner(this, snap.id)
       miner.state = snap.state
+      miner.condition = snap.condition ?? 1
       miner.asteroidId = snap.asteroidId
       miner.spareNetCount = snap.spareNetCount
       miner.activeNetFill = snap.activeNetFill
@@ -426,7 +430,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 16,
+      schemaVersion: 17,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -473,6 +477,7 @@ export class SpaceScene extends Phaser.Scene {
       autoMiners: this.autoMiners.map(m => ({
         id: m.id,
         state: m.state,
+        condition: m.condition,
         asteroidId: m.asteroidId,
         freeOrbitalRadius: m.freeOrbitalRadius,
         freeOrbitalAngle: m.freeOrbitalAngle,
@@ -1411,13 +1416,15 @@ export class SpaceScene extends Phaser.Scene {
       return
     }
 
-    if (Math.random() >= ATTACH_FAILURE_PROB) {
+    const effectiveFailProb = ATTACH_FAILURE_PROB + CONDITION_MAX_PENALTY * conditionPenaltyFraction(miner.condition)
+    if (Math.random() >= effectiveFailProb) {
       miner.state = 'mining'
       miner.pushToStore()
       this.attachRetryCount.delete(ship.id)
       return
     }
 
+    miner.condition = Math.max(0, miner.condition - CONDITION_DEGRADE_PER_FAIL)
     miner.state = 'drifting'
     miner.pushToStore()
 
