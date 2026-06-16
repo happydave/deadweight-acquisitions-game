@@ -37,22 +37,36 @@ export function selectDispatchTarget<S extends SlottedShip>(
     }, null)
 }
 
+function minerSlotOf(ship: SlottedShip): AttachmentPoint | undefined {
+  return ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner')
+}
+
 /**
  * Selects an idle hauler to fulfil a mining designation.
  * Preference 1: idle ship carrying an in-transit auto-miner on a medium slot.
+ *   When `isMinerEmpty` is supplied, an empty carried miner is preferred over a
+ *   loaded one (a miner still holding nets is a poorer redeploy candidate).
  * Preference 2 (only when hasStoredMiner): any idle ship with a free medium slot.
  * Returns null if no suitable ship exists.
  */
 export function selectHaulerForDesignation<S extends SlottedShip>(
   ships: S[],
   hasStoredMiner: boolean,
+  isMinerEmpty?: (minerId: string) => boolean,
 ): S | null {
   const idle = ships.filter(s => s.shipState === 'idle')
 
-  const withMiner = idle.find(s =>
-    s.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner'),
-  )
-  if (withMiner) return withMiner
+  const withMiner = idle.filter(s => minerSlotOf(s) !== undefined)
+  if (withMiner.length > 0) {
+    if (isMinerEmpty) {
+      const empty = withMiner.find(s => {
+        const payload = minerSlotOf(s)!.payload
+        return payload?.kind === 'auto-miner' && isMinerEmpty(payload.minerId)
+      })
+      if (empty) return empty
+    }
+    return withMiner[0]
+  }
 
   if (!hasStoredMiner) return null
 

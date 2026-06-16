@@ -34,6 +34,9 @@ export const HAULER_BATTERY_MAX = 100
 export const HAULER_BATTERY_CHARGE_RATE = 0.5
 export const HAULER_RCS_MAX = 100
 export const HAULER_RCS_DRAIN_MANEUVER = 2
+// Time a hauler spends maneuvering to attach/recover an autominer onto an
+// attachment point. RCS is consumed during this hold via HAULER_RCS_DRAIN_MANEUVER.
+export const HAULER_ATTACH_MANEUVER_MS = 1500
 export const HAULER_FIELD_CHARGE_FUEL_RATE = 5
 export const HAULER_FIELD_CHARGE_BATTERY_RATE = 20
 

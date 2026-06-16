@@ -11,11 +11,11 @@ function slot(size: 'small' | 'medium', occupied: boolean): AttachmentPoint {
   }
 }
 
-function minerSlot(): AttachmentPoint {
+function minerSlot(minerId = 'miner-1'): AttachmentPoint {
   return {
     id: 'id',
     size: 'medium',
-    payload: { kind: 'auto-miner', minerId: 'miner-1' },
+    payload: { kind: 'auto-miner', minerId },
   }
 }
 
@@ -169,5 +169,24 @@ describe('selectHaulerForDesignation', () => {
   it('returns null when all medium slots are occupied and no miner carrier', () => {
     const fullSlots = ship('idle', 0, 0, [slot('medium', true)])
     expect(selectHaulerForDesignation([fullSlots], true)).toBeNull()
+  })
+
+  it('prefers a carrier whose miner is empty over one whose miner is loaded', () => {
+    const loaded = ship('idle', 0, 0, [minerSlot('loaded')])
+    const empty  = ship('idle', 0, 0, [minerSlot('empty')])
+    const isEmpty = (id: string) => id === 'empty'
+    expect(selectHaulerForDesignation([loaded, empty], true, isEmpty)).toBe(empty)
+    expect(selectHaulerForDesignation([empty, loaded], true, isEmpty)).toBe(empty)
+  })
+
+  it('falls back to first carrier when no carried miner is empty', () => {
+    const a = ship('idle', 0, 0, [minerSlot('a')])
+    const b = ship('idle', 0, 0, [minerSlot('b')])
+    expect(selectHaulerForDesignation([a, b], true, () => false)).toBe(a)
+  })
+
+  it('ignores the empty predicate when no carrier exists', () => {
+    const noMiner = ship('idle', 0, 0, [slot('medium', false)])
+    expect(selectHaulerForDesignation([noMiner], true, () => true)).toBe(noMiner)
   })
 })

@@ -46,6 +46,15 @@ export const MINER_BATTERY_DRAIN_MINING = 2
 export const MINER_BATTERY_DRAIN_BEACONING = 0.05
 export const MINER_RCS_MAX = 50
 export const MINER_RCS_DRAIN_PER_ATTACH = 10
+// Battery fraction at which a mining miner starts beaconing for recovery while
+// still working, and the lower fraction at which it stops mining to preserve
+// reserve battery for the beacon.
+export const LOW_BATTERY_BEACON_FRAC = 0.2
+export const LOW_BATTERY_STOP_FRAC = 0.1
+
+// Why a miner is advertising for recovery, so the fleet/HUD can distinguish a
+// "come collect, asteroid done" beacon from a "rescue me, battery dying" one.
+export type BeaconReason = 'depleted' | 'low-battery' | 'stuck' | null
 
 export function conditionPenaltyFraction(condition: number): number {
   if (condition >= CONDITION_GRACE_THRESHOLD) return 0
@@ -104,6 +113,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   freeOrbitalAngle: number | null = null
   battery: number
   rcsFuel: number
+  beaconReason: BeaconReason = null
   private beaconTimer: Phaser.Time.TimerEvent | null = null
 
   constructor(scene: Phaser.Scene, id?: string) {
@@ -137,6 +147,21 @@ export class AutoMiner extends Phaser.GameObjects.Image {
       return
     }
 
+    const batteryFrac = this.battery / MINER_BATTERY_MAX
+    // Very low: stop mining and beacon for recovery on the reserve battery.
+    if (batteryFrac <= LOW_BATTERY_STOP_FRAC) {
+      this.state = 'standby-beaconing'
+      this.beaconReason = 'low-battery'
+      this.startBeacon()
+      this.pushToStore()
+      return
+    }
+    // Low: start advertising for recovery but keep mining for now.
+    if (batteryFrac <= LOW_BATTERY_BEACON_FRAC && this.beaconReason !== 'low-battery') {
+      this.beaconReason = 'low-battery'
+      this.startBeacon()
+    }
+
     const effectiveRate = MINER_RATE * (1 - CONDITION_MAX_PENALTY * conditionPenaltyFraction(this.condition))
     const extracted = Math.min(effectiveRate * dt, asteroid.currentQuantity)
     asteroid.currentQuantity -= extracted
@@ -145,6 +170,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
 
     if (asteroid.currentQuantity <= 0) {
       this.state = 'standby-beaconing'
+      this.beaconReason = 'depleted'
       this.startBeacon()
       this.pushToStore()
       return
@@ -248,6 +274,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
       tetheredNetCount: this.tetheredNetIds.length,
       battery: this.battery,
       rcsFuel: this.rcsFuel,
+      beaconReason: this.beaconReason,
     })
   }
 

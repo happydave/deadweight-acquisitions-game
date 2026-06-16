@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store'
-import type { AutoMinerState } from '../entities/AutoMiner'
+import type { AutoMinerState, BeaconReason } from '../entities/AutoMiner'
 
 export interface SelectedAutoMinerData {
   id: string
@@ -11,6 +11,7 @@ export interface SelectedAutoMinerData {
   tetheredNetCount: number
   battery: number
   rcsFuel: number
+  beaconReason: BeaconReason
 }
 
 export interface BeaconData {

@@ -1,7 +1,7 @@
 import type { ResourceType, SizeCategory } from '../world/worldConfig'
 import type { ShipState } from './shipStore'
 import type { AttachmentPoint } from './attachmentTypes'
-import type { AutoMinerState } from '../entities/AutoMiner'
+import type { AutoMinerState, BeaconReason } from '../entities/AutoMiner'
 import type { CargoNetState } from '../entities/CargoNet'
 
 export interface AsteroidSnapshot {
@@ -38,6 +38,7 @@ export interface AutoMinerSnapshot {
   tetheredNetIds: string[]
   battery: number
   rcsFuel: number
+  beaconReason: BeaconReason
 }
 
 export interface ShipSnapshot {

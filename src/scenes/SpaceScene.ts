@@ -33,6 +33,7 @@ import {
   HAULER_BATTERY_MAX,
   HAULER_FIELD_CHARGE_FUEL_RATE,
   HAULER_FIELD_CHARGE_BATTERY_RATE,
+  HAULER_ATTACH_MANEUVER_MS,
 } from '../entities/Ship'
 
 import {
@@ -133,6 +134,8 @@ export class SpaceScene extends Phaser.Scene {
   private cargoNets: CargoNet[] = []
   private cargoNetMap: Map<string, CargoNet> = new Map()
   private shipMinerRecoveryTargets: Map<string, string> = new Map()
+  // Ships currently performing the timed attach/recovery maneuver (one-shot guard).
+  private shipAttachManeuver: Set<string> = new Set()
   private attachRetryCount: Map<string, number> = new Map()
   private base!: Base
   private selectedShip: Ship | null = null
@@ -257,6 +260,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.condition = snap.condition ?? 1
       miner.battery = snap.battery ?? MINER_BATTERY_MAX
       miner.rcsFuel = snap.rcsFuel ?? MINER_RCS_MAX
+      miner.beaconReason = snap.beaconReason ?? null
       miner.asteroidId = snap.asteroidId
       miner.spareNetCount = snap.spareNetCount
       miner.activeNetFill = snap.activeNetFill
@@ -414,6 +418,7 @@ export class SpaceScene extends Phaser.Scene {
             const miner = this.autoMinerMap.get(ap.payload.minerId)
             if (miner && miner.state === 'in-transit') {
               miner.state = 'standby-beaconing'
+              miner.beaconReason = 'depleted'
               miner.setVisible(true)
             }
             ap.payload = null
@@ -427,6 +432,7 @@ export class SpaceScene extends Phaser.Scene {
     for (const miner of this.autoMiners) {
       if (miner.state === 'drifting') {
         miner.state = 'standby-beaconing'
+        miner.beaconReason = 'stuck'
       } else if (miner.state === 'station-repair') {
         if (this.base.storeAutoMiner(miner.id)) {
           miner.state = 'station-stored'
@@ -438,6 +444,7 @@ export class SpaceScene extends Phaser.Scene {
             Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
           )
           miner.state = 'standby-beaconing'
+          miner.beaconReason = 'depleted'
           miner.setVisible(true)
         }
       }
@@ -531,6 +538,7 @@ export class SpaceScene extends Phaser.Scene {
         tetheredNetIds: [...m.tetheredNetIds],
         battery: m.battery,
         rcsFuel: m.rcsFuel,
+        beaconReason: m.beaconReason,
       })),
       cargoNets: this.cargoNets
         .filter(n => n.state === 'full-tethered')
@@ -662,7 +670,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private spawnStarterShip(): void {
-    const ship = new Ship(this, 0, 0, 'Hauler-01', { x: BASE_X, y: BASE_Y }, this.base)
+    const ship = new Ship(this, BASE_X, BASE_Y, 'Hauler-01', { x: BASE_X, y: BASE_Y }, this.base)
 
     // Pre-load one AutoMiner on the first medium attachment point
     const miner = new AutoMiner(this)
@@ -881,7 +889,14 @@ export class SpaceScene extends Phaser.Scene {
         [...this.shipPendingDesignationAsteroid.values()].includes(designation.asteroidId)
       if (alreadyDispatched) continue
 
-      const hauler = selectHaulerForDesignation(this.ships, this.base.stationMinerIds.length > 0)
+      const hauler = selectHaulerForDesignation(
+        this.ships,
+        this.base.stationMinerIds.length > 0,
+        minerId => {
+          const m = this.autoMinerMap.get(minerId)
+          return !!m && m.tetheredNetIds.length === 0 && m.activeNetFill === 0
+        },
+      )
       if (!hauler) continue
 
       if (!this.claimDesignation(designation.id, hauler.id)) continue
@@ -971,6 +986,7 @@ export class SpaceScene extends Phaser.Scene {
   private performAtAsteroidRecovery(ship: Ship, miner: AutoMiner): void {
     miner.asteroidId = null
     miner.state = 'in-transit'
+    miner.beaconReason = null
     miner.setVisible(false)
     for (const netId of miner.tetheredNetIds) {
       this.cargoNetMap.get(netId)?.setVisible(false)
@@ -1291,8 +1307,10 @@ export class SpaceScene extends Phaser.Scene {
     const miner = this.autoMinerMap.get(minerId)
     if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck' && miner.state !== 'dark')) return
 
+    // Only consider idle haulers that have a free medium slot, so a full idle
+    // hauler nearest the beacon does not block recovery by others.
     const nearestIdle = this.ships
-      .filter(s => s.shipState === 'idle')
+      .filter(s => s.shipState === 'idle' && shipHasFreeMediumSlot(s))
       .reduce<Ship | null>((best, s) => {
         if (!best) return s
         const dBest = Phaser.Math.Distance.Between(best.x, best.y, miner.x, miner.y)
@@ -1354,6 +1372,7 @@ export class SpaceScene extends Phaser.Scene {
       otherMiner.asteroidId = null
       if (otherMiner.state !== 'standby-beaconing') {
         otherMiner.state = 'standby-beaconing'
+        otherMiner.beaconReason = 'depleted'
         otherMiner.startBeacon()
       }
       otherMiner.pushToStore()
@@ -1390,6 +1409,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.freeOrbitalRadius = null
       miner.freeOrbitalAngle = null
       miner.state = 'in-transit'
+      miner.beaconReason = null
       miner.setVisible(false)
       for (const netId of miner.tetheredNetIds) {
         this.cargoNetMap.get(netId)?.setVisible(false)
@@ -1482,6 +1502,7 @@ export class SpaceScene extends Phaser.Scene {
 
     if (asteroid.currentQuantity <= 0) {
       miner.state = 'standby-beaconing'
+      miner.beaconReason = 'depleted'
       miner.startBeacon()
       miner.pushToStore()
       this.attachRetryCount.delete(ship.id)
@@ -1493,6 +1514,7 @@ export class SpaceScene extends Phaser.Scene {
     const effectiveFailProb = ATTACH_FAILURE_PROB + CONDITION_MAX_PENALTY * conditionPenaltyFraction(miner.condition)
     if (Math.random() >= effectiveFailProb) {
       miner.state = 'mining'
+      miner.beaconReason = null
       miner.pushToStore()
       this.attachRetryCount.delete(ship.id)
       return
@@ -1559,10 +1581,12 @@ export class SpaceScene extends Phaser.Scene {
     if (freeSlot) {
       freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
       miner.state = 'in-transit'
+      miner.beaconReason = null
       miner.setVisible(false)
     } else {
       console.warn(`handleAttachExhaustion: no free medium slot on ship ${ship.id}, miner ${miner.id} — stuck`)
       miner.state = 'stuck'
+      miner.beaconReason = 'stuck'
       miner.startBeacon()
     }
 
@@ -1617,6 +1641,7 @@ export class SpaceScene extends Phaser.Scene {
 
     if (this.base.storeAutoMiner(minerId)) {
       miner.state = 'station-stored'
+      miner.beaconReason = null
     } else {
       // No storage slot free — eject to orbit near base for beacon recovery
       miner.freeOrbitalRadius = BASE_Y
@@ -1626,6 +1651,7 @@ export class SpaceScene extends Phaser.Scene {
         Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
       )
       miner.state = 'standby-beaconing'
+      miner.beaconReason = 'depleted'
       miner.setVisible(true)
       miner.startBeacon()
     }
@@ -2097,6 +2123,9 @@ export class SpaceScene extends Phaser.Scene {
       )
       if (!waitingShip) continue
 
+      // Skip while this ship is mid attach maneuver (one-shot guard set below).
+      if (this.shipAttachManeuver.has(waitingShip.id)) continue
+
       // Attachment-time capacity check: ship must have at least one free medium slot before
       // attempting any collection or recovery. If full, depart immediately so a capable ship
       // can be dispatched on the next autoDispatch tick.
@@ -2117,8 +2146,19 @@ export class SpaceScene extends Phaser.Scene {
       } else if (miner.state === 'standby-beaconing') {
         const freeSlot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
         if (freeSlot) {
-          freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
-          this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
+          // Hold for the attach maneuver (RCS drains while waiting-at-asteroid) before grabbing the miner.
+          this.shipAttachManeuver.add(waitingShip.id)
+          this.time.delayedCall(HAULER_ATTACH_MANEUVER_MS, () => {
+            this.shipAttachManeuver.delete(waitingShip.id)
+            if (waitingShip.shipState !== 'waiting-at-asteroid' || miner.state !== 'standby-beaconing') return
+            const slot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
+            if (!slot) {
+              this.departShipForBase(waitingShip)
+              return
+            }
+            slot.payload = { kind: 'auto-miner', minerId: miner.id }
+            this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
+          })
         } else {
           this.departShipForBase(waitingShip)
         }
@@ -2179,9 +2219,15 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'deploying-miner') {
         this.performDeploy(ship)
       }
-      // Detect arrival: steerTowardTarget transitioned to loading-miner
-      if (ship.shipState === 'loading-miner') {
-        this.handleLoadingMiner(ship)
+      // Detect arrival: steerTowardTarget transitioned to loading-miner.
+      // Hold in this state for the attach maneuver (RCS drains via updateSteering)
+      // before actually attaching the miner.
+      if (ship.shipState === 'loading-miner' && !this.shipAttachManeuver.has(ship.id)) {
+        this.shipAttachManeuver.add(ship.id)
+        this.time.delayedCall(HAULER_ATTACH_MANEUVER_MS, () => {
+          this.shipAttachManeuver.delete(ship.id)
+          if (ship.shipState === 'loading-miner') this.handleLoadingMiner(ship)
+        })
       }
       // Detect arrival: steerTowardTarget transitioned to entering-hangar
       if (ship.shipState === 'entering-hangar') {
