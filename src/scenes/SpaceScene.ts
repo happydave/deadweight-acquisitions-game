@@ -1040,10 +1040,10 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     for (const miner of this.autoMiners) {
-      // Free-orbiting miner: use existing beacon-response flow
+      // Free-orbiting miner: use existing beacon-response flow (initiateRespondToBeacon
+      // self-guards against double-claim via isMinerBeingRecovered).
       if (miner.freeOrbitalRadius !== null && miner.state === 'standby-beaconing') {
-        const alreadyDispatched = [...this.shipMinerRecoveryTargets.values()].includes(miner.id)
-        if (!alreadyDispatched) this.initiateRespondToBeacon(miner.id)
+        this.initiateRespondToBeacon(miner.id)
         continue
       }
 
@@ -1415,9 +1415,9 @@ export class SpaceScene extends Phaser.Scene {
     if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck' && miner.state !== 'dark')) return
 
     // Idempotency: do not dispatch a second hauler to a miner already being
-    // recovered (repeated Dispatch clicks would otherwise each send a new idle
-    // hauler to the same miner). Mirrors the auto-dispatch guard.
-    if ([...this.shipMinerRecoveryTargets.values()].includes(minerId)) return
+    // recovered by any path (beacon recovery, a reserved/holding slot, or a
+    // waiting hauler mid at-asteroid maneuver).
+    if (this.isMinerBeingRecovered(minerId)) return
 
     // Only consider idle haulers that have a free medium slot, so a full idle
     // hauler nearest the beacon does not block recovery by others.
@@ -1588,7 +1588,15 @@ export class SpaceScene extends Phaser.Scene {
       return
     }
     const miner = this.autoMinerMap.get(minerId)
-    if (miner) {
+    // If the miner was already recovered by another hauler (no longer in a
+    // recoverable state), release this ship's reservation and leave — never
+    // create a duplicate reference to the same miner.
+    if (!miner || (miner.state !== 'standby-beaconing' && miner.state !== 'stuck' && miner.state !== 'dark')) {
+      this.releaseReservationFor(ship, minerId)
+      this.departShipForBase(ship)
+      return
+    }
+    {
       // Convert the reservation into the real carried-miner payload on pickup. If
       // no slot can hold it, leave the miner recoverable (re-beacon) rather than
       // dropping it.
@@ -2122,6 +2130,37 @@ export class SpaceScene extends Phaser.Scene {
       a += 0.04 // fan out so multiple orphaned nets do not overlap exactly
     }
     miner.tetheredNetIds = []
+  }
+
+  /** Clears any reserved slot on `ship` targeting `targetId` (→ empty). */
+  private releaseReservationFor(ship: Ship, targetId: string): void {
+    for (const ap of ship.attachmentPoints) {
+      if (ap.payload?.kind === 'reserved' && ap.payload.targetId === targetId) ap.payload = null
+    }
+  }
+
+  /**
+   * True if a miner is already being recovered by any path: an en-route beacon
+   * recovery, a slot already holding or reserved for it, or a waiting hauler mid
+   * at-asteroid attach maneuver at the miner's asteroid. Single authoritative
+   * guard so a Dispatch cannot double-claim a miner.
+   */
+  private isMinerBeingRecovered(minerId: string): boolean {
+    if ([...this.shipMinerRecoveryTargets.values()].includes(minerId)) return true
+    for (const ship of this.ships) {
+      for (const ap of ship.attachmentPoints) {
+        const p = ap.payload
+        if (p?.kind === 'auto-miner' && p.minerId === minerId) return true
+        if (p?.kind === 'reserved' && p.forKind === 'auto-miner' && p.targetId === minerId) return true
+      }
+    }
+    const miner = this.autoMinerMap.get(minerId)
+    if (miner?.asteroidId) {
+      for (const ship of this.ships) {
+        if (this.shipAttachManeuver.has(ship.id) && ship.asteroidTarget?.id === miner.asteroidId) return true
+      }
+    }
+    return false
   }
 
   /** Recharges a miner's battery to full at the station, charging electricity. */
