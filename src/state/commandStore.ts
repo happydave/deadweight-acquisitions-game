@@ -17,5 +17,6 @@ export type GameCommand =
   | { type: 'purchasePressurization' }
   | { type: 'designateAsteroid'; asteroidId: string }
   | { type: 'undesignateAsteroid'; asteroidId: string }
+  | { type: 'repairMiner'; minerId: string }
 
 export const commandQueue = writable<GameCommand[]>([])

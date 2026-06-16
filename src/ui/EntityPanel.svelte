@@ -67,6 +67,17 @@
         on:click={() => commandQueue.update(q => [...q, { type: 'resupplyMiner', minerId: $selectedAutoMiner!.id }])}
       >Resupply</button>
     {/if}
+    {#if $selectedAutoMiner.state === 'station-stored'}
+      <button
+        class="action-btn"
+        on:click={() => commandQueue.update(q => [...q, { type: 'repairMiner', minerId: $selectedAutoMiner!.id }])}
+      >Repair</button>
+    {:else if $selectedAutoMiner.state === 'station-repair'}
+      <div class="row">
+        <span class="label">Service</span>
+        <span class="value state-am-station-repair">Repairing…</span>
+      </div>
+    {/if}
   </div>
 {:else if $selectedShip}
   <div class="panel">
@@ -301,6 +312,7 @@
   .state-am-ejecting-net           { color: #88ddff; }
   .state-am-net-starved            { color: #ff6644; }
   .state-am-standby-beaconing      { color: #ffaa44; }
+  .state-am-station-repair         { color: #88ccdd; }
 
   .desig-queued  { color: #88ffaa; }
   .desig-claimed { color: #ffdd88; }

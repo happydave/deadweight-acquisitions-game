@@ -45,6 +45,7 @@ import {
   CONDITION_MAX_PENALTY,
   CONDITION_CAP_THRESHOLD,
   CATASTROPHIC_FAIL_PROB,
+  MINER_REPAIR_DURATION_MS,
   conditionPenaltyFraction,
   type AutoMinerState,
 } from '../entities/AutoMiner'
@@ -71,6 +72,7 @@ import {
   type AttachNotification,
 } from '../state/autoMinerStore'
 import { GameSaveService } from '../services/GameSaveService'
+import { getPrice } from '../world/pricingSeam'
 
 const NOTIFICATION_DURATION_MS = 4000
 const WORLD_SIZE = 8500
@@ -154,6 +156,7 @@ export class SpaceScene extends Phaser.Scene {
   private shipPendingUpgrades: Map<string, 'cargo'> = new Map()
   private shipPendingDesignationAsteroid: Map<string, string> = new Map()
   private designations: MiningDesignation[] = []
+  private minerRepairs: Map<string, { slotIndex: number }> = new Map()
   private beforeUnloadHandler!: () => void
 
   constructor() {
@@ -400,9 +403,23 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     // Rescue drifting miners: treat as standby-beaconing (retry is lost but miner is recoverable)
+    // Rescue station-repair miners: timer is not resumed; try re-store or eject to beacon
     for (const miner of this.autoMiners) {
       if (miner.state === 'drifting') {
         miner.state = 'standby-beaconing'
+      } else if (miner.state === 'station-repair') {
+        if (this.base.storeAutoMiner(miner.id)) {
+          miner.state = 'station-stored'
+        } else {
+          miner.freeOrbitalRadius = BASE_Y
+          miner.freeOrbitalAngle = Math.atan2(BASE_Y, BASE_X) + 0.15
+          miner.setPosition(
+            Math.cos(miner.freeOrbitalAngle) * miner.freeOrbitalRadius,
+            Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
+          )
+          miner.state = 'standby-beaconing'
+          miner.setVisible(true)
+        }
       }
     }
 
@@ -828,6 +845,14 @@ export class SpaceScene extends Phaser.Scene {
         hauler.shipState = 'traveling-to-asteroid'
         hauler.pushToStore()
       } else {
+        // Check if the station-stored miner is below condition threshold — if so, repair instead
+        const storedMinerId = this.base.stationMinerIds[0]
+        const storedMiner = storedMinerId ? this.autoMinerMap.get(storedMinerId) : null
+        if (storedMiner && storedMiner.condition < CONDITION_CAP_THRESHOLD) {
+          this.releaseDesignation(designation.id)
+          this.initiateRepair(storedMinerId)
+          continue
+        }
         this.shipPendingDesignationAsteroid.set(hauler.id, designation.asteroidId)
         hauler.target = { x: this.base.x, y: this.base.y }
         hauler.shipState = 'fetching-station-miner'
@@ -1142,6 +1167,8 @@ export class SpaceScene extends Phaser.Scene {
       this.addDesignation(cmd.asteroidId)
     } else if (cmd.type === 'undesignateAsteroid') {
       this.removeDesignation(cmd.asteroidId)
+    } else if (cmd.type === 'repairMiner') {
+      this.initiateRepair(cmd.minerId)
     }
   }
 
@@ -1501,6 +1528,64 @@ export class SpaceScene extends Phaser.Scene {
       `Miner attach exhausted — ${asteroid.resourceType} asteroid ${miner.asteroidId ?? ''}`,
       true,
     )
+  }
+
+  private initiateRepair(minerId: string): boolean {
+    const miner = this.autoMinerMap.get(minerId)
+    if (!miner || miner.state !== 'station-stored') return false
+
+    const cost = Math.round((1.0 - miner.condition) * 100) * getPrice('repair-per-condition-point')
+
+    const slotIndex = this.hangarOccupants.findIndex(occ => occ === null)
+    if (slotIndex === -1) return false
+
+    if (this.base.credits < cost) return false
+
+    this.base.credits -= cost
+    this.hangarOccupants[slotIndex] = minerId
+    this.base.stationMinerIds = this.base.stationMinerIds.filter(id => id !== minerId)
+    this.base.pushToStore()
+
+    miner.state = 'station-repair'
+    miner.pushToStore()
+
+    const isOwnedBay = slotIndex < this.base.ownedHangarCount
+    const duration = isOwnedBay && this.base.hangarPressurized
+      ? MINER_REPAIR_DURATION_MS * HANGAR_PRESSURIZED_FACTOR
+      : MINER_REPAIR_DURATION_MS
+
+    this.minerRepairs.set(minerId, { slotIndex })
+    this.time.delayedCall(duration, () => this.completeRepair(minerId))
+    return true
+  }
+
+  private completeRepair(minerId: string): void {
+    const repair = this.minerRepairs.get(minerId)
+    if (!repair) return
+    this.minerRepairs.delete(minerId)
+    this.hangarOccupants[repair.slotIndex] = null
+
+    const miner = this.autoMinerMap.get(minerId)
+    if (!miner) return
+
+    miner.condition = 1.0
+
+    if (this.base.storeAutoMiner(minerId)) {
+      miner.state = 'station-stored'
+    } else {
+      // No storage slot free — eject to orbit near base for beacon recovery
+      miner.freeOrbitalRadius = BASE_Y
+      miner.freeOrbitalAngle = Math.atan2(BASE_Y, BASE_X) + 0.15
+      miner.setPosition(
+        Math.cos(miner.freeOrbitalAngle) * miner.freeOrbitalRadius,
+        Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
+      )
+      miner.state = 'standby-beaconing'
+      miner.setVisible(true)
+      miner.startBeacon()
+    }
+
+    miner.pushToStore()
   }
 
   private pushAttachNotification(message: string, exhausted: boolean): void {

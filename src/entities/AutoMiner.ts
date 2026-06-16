@@ -16,6 +16,7 @@ export type AutoMinerState =
   | 'drifting'
   | 'dark'
   | 'station-stored'
+  | 'station-repair'
 
 export const MINER_RATE = 5               // resource units per second
 export const NET_CAPACITY = 50            // resource units per net
@@ -37,6 +38,7 @@ export const CONDITION_CAP_THRESHOLD = 0.3
 export const CONDITION_DEGRADE_PER_FAIL = 0.1
 export const CONDITION_MAX_PENALTY = 0.5
 export const CATASTROPHIC_FAIL_PROB = 0.2
+export const MINER_REPAIR_DURATION_MS = 5000
 
 export function conditionPenaltyFraction(condition: number): number {
   if (condition >= CONDITION_GRACE_THRESHOLD) return 0
