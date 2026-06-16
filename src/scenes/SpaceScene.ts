@@ -749,9 +749,12 @@ export class SpaceScene extends Phaser.Scene {
       this.pushAttachNotification(`${ship.shipName} out of fuel — coasting`, true)
       this.time.delayedCall(1000, () => {
         if (ship.shipState === 'coasting') {
-          ship.shipState = 'traveling-to-base'
-          ship.target = { x: this.base.x, y: this.base.y }
-          ship.pushToStore()
+          // Release any designation this ship had claimed (so it re-queues) and go
+          // home via departShipForBase, which clears asteroidTarget — leaving a
+          // stale target would permanently block that asteroid's dispatch.
+          const claimed = this.designations.find(d => d.claimedByShipId === ship.id)
+          if (claimed) this.releaseDesignation(claimed.id)
+          this.departShipForBase(ship)
         }
       })
     })
@@ -949,6 +952,13 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private autoDispatch(): void {
+    // An idle hauler should never retain an asteroid target; a stale one (e.g. from
+    // an out-of-fuel divert) would permanently mark that asteroid "already
+    // dispatched" and block its designation. Clear defensively.
+    for (const ship of this.ships) {
+      if (ship.shipState === 'idle' && ship.asteroidTarget !== null) ship.asteroidTarget = null
+    }
+
     // Idle carriers at base: recharge their in-transit miners (so a drained miner
     // is never redeployed) and store them in station storage when possible. Runs
     // before dispatch so deployment uses charged miners. Deployment itself is
