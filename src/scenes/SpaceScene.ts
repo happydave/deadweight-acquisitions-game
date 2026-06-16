@@ -1145,8 +1145,6 @@ export class SpaceScene extends Phaser.Scene {
       GameSaveService.save(this.buildSaveState())
     } else if (cmd.type === 'upgradeShip') {
       this.initiateShipUpgrade(cmd.shipId, cmd.stat)
-    } else if (cmd.type === 'deployMiner') {
-      this.initiateDeployMiner(cmd.haulerId, cmd.asteroidId)
     } else if (cmd.type === 'resupplyMiner') {
       this.initiateResupplyMiner(cmd.minerId)
     } else if (cmd.type === 'respondToBeacon') {
@@ -1170,18 +1168,6 @@ export class SpaceScene extends Phaser.Scene {
     } else if (cmd.type === 'repairMiner') {
       this.initiateRepair(cmd.minerId)
     }
-  }
-
-  private initiateDeployMiner(haulerId: string, asteroidId: string): void {
-    const ship = this.ships.find(s => s.id === haulerId)
-    const asteroid = this.asteroidMap.get(asteroidId)
-    if (!ship || !asteroid) return
-    if (!this.shipHasMiner(ship)) return
-
-    ship.asteroidTarget = asteroid
-    ship.target = { x: asteroid.x, y: asteroid.y }
-    ship.shipState = 'traveling-to-asteroid'
-    ship.pushToStore()
   }
 
   private initiateCollectNets(haulerId: string, asteroidId: string): void {
@@ -1349,12 +1335,6 @@ export class SpaceScene extends Phaser.Scene {
       activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
     }
     this.departShipForBase(ship)
-  }
-
-  private shipHasMiner(ship: Ship): boolean {
-    return ship.attachmentPoints.some(
-      ap => ap.size === 'medium' && ap.payload?.kind === 'auto-miner',
-    )
   }
 
   private performDeploy(ship: Ship): void {

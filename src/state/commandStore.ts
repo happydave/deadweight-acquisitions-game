@@ -6,7 +6,6 @@ export type GameCommand =
   | { type: 'commissionShip' }
   | { type: 'manualSave' }
   | { type: 'upgradeShip'; shipId: string; stat: 'cargo' }
-  | { type: 'deployMiner'; haulerId: string; asteroidId: string }
   | { type: 'resupplyMiner'; minerId: string }
   | { type: 'respondToBeacon'; minerId: string }
   | { type: 'purchaseMiner'; haulerId: string }
