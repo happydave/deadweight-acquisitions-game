@@ -2196,14 +2196,15 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    let idle = 0, active = 0, returning = 0
+    let idle = 0, active = 0, returning = 0, coasting = 0
     for (const ship of this.ships) {
       const s = ship.shipState
-      if (s === 'idle' || s === 'moving') idle++
+      if (s === 'coasting') coasting++
+      else if (s === 'idle' || s === 'moving') idle++
       else if (s === 'traveling-to-base' || s === 'unloading' || s === 'in-hangar' || s === 'traveling-to-hangar' || s === 'fetching-station-miner') returning++
       else active++
     }
-    fleetSummary.set({ idle, active, returning })
+    fleetSummary.set({ idle, active, returning, coasting })
 
     let mining = 0, netStarved = 0, beaconing = 0, dark = 0, stuck = 0
     for (const miner of this.autoMiners) {

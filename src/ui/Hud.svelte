@@ -54,6 +54,12 @@
     <span class="hud-key">Returning</span>
     <span class="hud-val">{$fleetSummary.returning}</span>
   </div>
+  {#if $fleetSummary.coasting > 0}
+    <div class="hud-row hud-indent">
+      <span class="hud-key miner-stuck">Coasting</span>
+      <span class="hud-val miner-stuck">{$fleetSummary.coasting}</span>
+    </div>
+  {/if}
   {#if $autoMinerSummary.mining > 0 || $autoMinerSummary.netStarved > 0 || $autoMinerSummary.beaconing > 0 || $autoMinerSummary.dark > 0}
     <div class="hud-row hud-section">
       <span class="hud-key">Miners</span>

@@ -3,7 +3,8 @@
   import { selectedAutoMiner } from '../state/autoMinerStore'
   import { selectedCargoNet } from '../state/cargoNetStore'
   import { commandQueue } from '../state/commandStore'
-  import { NET_CAPACITY, CONDITION_CAP_THRESHOLD, CONDITION_GRACE_THRESHOLD } from '../entities/AutoMiner'
+  import { NET_CAPACITY, CONDITION_CAP_THRESHOLD, CONDITION_GRACE_THRESHOLD, MINER_BATTERY_MAX, MINER_RCS_MAX } from '../entities/AutoMiner'
+  import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities/Ship'
   import { designationQueue } from '../state/designationStore'
 
   function cargoTotal(contents: Record<string, number>): number {
@@ -74,6 +75,20 @@
     {#if $selectedAutoMiner.condition < CONDITION_CAP_THRESHOLD}
       <div class="cond-warning">⚠ Catastrophic failure risk</div>
     {/if}
+    <div class="row meter-row">
+      <span class="label">Battery</span>
+      <span class="value">{Math.floor($selectedAutoMiner.battery)}/{MINER_BATTERY_MAX}</span>
+    </div>
+    <div class="meter-track">
+      <div class="meter-fill meter-battery" style="width: {$selectedAutoMiner.battery / MINER_BATTERY_MAX * 100}%"></div>
+    </div>
+    <div class="row meter-row">
+      <span class="label">RCS</span>
+      <span class="value">{Math.floor($selectedAutoMiner.rcsFuel)}/{MINER_RCS_MAX}</span>
+    </div>
+    <div class="meter-track">
+      <div class="meter-fill meter-rcs" style="width: {$selectedAutoMiner.rcsFuel / MINER_RCS_MAX * 100}%"></div>
+    </div>
     {#if $selectedAutoMiner.state === 'net-starved'}
       <button
         class="action-btn"
@@ -141,6 +156,28 @@
         </div>
       {/if}
     {/each}
+    <div class="section-label">FUEL / POWER</div>
+    <div class="row meter-row">
+      <span class="label">Thruster</span>
+      <span class="value">{Math.floor($selectedShip.thrusterFuel)}/{HAULER_FUEL_MAX}</span>
+    </div>
+    <div class="meter-track">
+      <div class="meter-fill meter-fuel" style="width: {$selectedShip.thrusterFuel / HAULER_FUEL_MAX * 100}%"></div>
+    </div>
+    <div class="row meter-row">
+      <span class="label">RCS</span>
+      <span class="value">{Math.floor($selectedShip.rcsFuel)}/{HAULER_RCS_MAX}</span>
+    </div>
+    <div class="meter-track">
+      <div class="meter-fill meter-rcs" style="width: {$selectedShip.rcsFuel / HAULER_RCS_MAX * 100}%"></div>
+    </div>
+    <div class="row meter-row">
+      <span class="label">Battery</span>
+      <span class="value">{Math.floor($selectedShip.battery)}/{HAULER_BATTERY_MAX}</span>
+    </div>
+    <div class="meter-track">
+      <div class="meter-fill meter-battery" style="width: {$selectedShip.battery / HAULER_BATTERY_MAX * 100}%"></div>
+    </div>
     {#if $selectedShip.state === 'waiting-at-asteroid'}
       <div class="row">
         <span class="label">Miner Charge</span>
@@ -346,6 +383,26 @@
   .toggle-btn:hover {
     background: rgba(60, 110, 160, 0.9);
     border-color: #6aaccf;
+  }
+
+  .meter-track {
+    height: 3px;
+    background: #1a2a3a;
+    margin: 1px 0 4px;
+    border-radius: 1px;
+  }
+
+  .meter-fill {
+    height: 100%;
+    border-radius: 1px;
+  }
+
+  .meter-fuel     { background: #cc8844; }
+  .meter-rcs      { background: #4488cc; }
+  .meter-battery  { background: #cccc44; }
+
+  .meter-row {
+    margin-bottom: 0;
   }
 
   .state-idle                      { color: #88ffaa; }
