@@ -824,6 +824,12 @@ export class SpaceScene extends Phaser.Scene {
           // Auto-transfer in-transit miner to station storage if a slot is available
           if (miner.state === 'in-transit' && this.base.storeAutoMiner(miner.id)) {
             miner.state = 'station-stored'
+            if (miner.battery < MINER_BATTERY_MAX) {
+              const deficit = MINER_BATTERY_MAX - miner.battery
+              this.base.credits -= Math.round(deficit * getPrice('electricity-per-battery-unit'))
+              miner.battery = MINER_BATTERY_MAX
+              this.base.pushToStore()
+            }
             miner.setVisible(false)
             ap.payload = null
             miner.pushToStore()
