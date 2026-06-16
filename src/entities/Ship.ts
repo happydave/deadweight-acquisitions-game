@@ -445,11 +445,13 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         : p === null ? SLOT_COLOR_EMPTY
         : SLOT_COLOR_NET // cargo-net or reserved-for-net
       if (progress !== undefined) {
-        // Operation in progress (pickup / drop-off / recovery): outline + bottom-up fill.
+        // Operation in progress: outline + fill. Loading fills bottom-up; unloading
+        // drains (empties) the slot as it goes.
         const c = p === null ? SLOT_COLOR_NET : color
         g.lineStyle(1, c, 0.9)
         g.strokeRect(mx, my, s, s)
-        const fh = s * Math.min(Math.max(progress, 0), 1)
+        const clamped = Math.min(Math.max(progress, 0), 1)
+        const fh = s * (this.shipState === 'unloading' ? 1 - clamped : clamped)
         g.fillStyle(c, 1)
         g.fillRect(mx, my + (s - fh), s, fh)
       } else if (p === null) {
