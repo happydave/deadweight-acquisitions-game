@@ -36,6 +36,7 @@ export const CONDITION_GRACE_THRESHOLD = 0.7
 export const CONDITION_CAP_THRESHOLD = 0.3
 export const CONDITION_DEGRADE_PER_FAIL = 0.1
 export const CONDITION_MAX_PENALTY = 0.5
+export const CATASTROPHIC_FAIL_PROB = 0.2
 
 export function conditionPenaltyFraction(condition: number): number {
   if (condition >= CONDITION_GRACE_THRESHOLD) return 0

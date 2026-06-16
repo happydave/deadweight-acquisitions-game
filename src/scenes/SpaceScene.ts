@@ -43,6 +43,8 @@ import {
   ATTACH_RETRY_DELAY_MS,
   CONDITION_DEGRADE_PER_FAIL,
   CONDITION_MAX_PENALTY,
+  CONDITION_CAP_THRESHOLD,
+  CATASTROPHIC_FAIL_PROB,
   conditionPenaltyFraction,
   type AutoMinerState,
 } from '../entities/AutoMiner'
@@ -1425,6 +1427,21 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     miner.condition = Math.max(0, miner.condition - CONDITION_DEGRADE_PER_FAIL)
+
+    if (miner.condition < CONDITION_CAP_THRESHOLD && Math.random() < CATASTROPHIC_FAIL_PROB) {
+      this.pushAttachNotification('Miner destroyed — catastrophic attach failure', true)
+      this.attachRetryCount.delete(ship.id)
+      const claimedDesig = this.designations.find(d => d.claimedByShipId === ship.id)
+      if (claimedDesig) this.releaseDesignation(claimedDesig.id)
+      this.autoMiners = this.autoMiners.filter(m => m.id !== miner.id)
+      this.autoMinerMap.delete(miner.id)
+      miner.destroy()
+      ship.shipState = 'traveling-to-base'
+      ship.target = { x: BASE_X, y: BASE_Y }
+      ship.pushToStore()
+      return
+    }
+
     miner.state = 'drifting'
     miner.pushToStore()
 
