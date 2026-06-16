@@ -72,7 +72,7 @@ import {
 import { gameState, type SaveState } from '../state/gameState'
 import { commandQueue, type GameCommand } from '../state/commandStore'
 import { selectedAsteroid, selectedShip } from '../state/shipStore'
-import { basePanelOpen } from '../state/baseStore'
+import { basePanelOpen, stationUsage } from '../state/baseStore'
 import { fleetSummary } from '../state/fleetStore'
 import { designationQueue, type MiningDesignation } from '../state/designationStore'
 import {
@@ -642,6 +642,30 @@ export class SpaceScene extends Phaser.Scene {
       gfx.strokeCircle(bay.x, bay.y, 12)
     }
   }
+
+  /** Pushes station capacity/usage to the UI store (change-guarded). */
+  private pushStationUsage(): void {
+    const docksInUse = this.slotOccupants.filter(o => o !== null).length
+    const publicDocksInUse = this.slotOccupants.filter((o, i) => o !== null && i >= this.base.ownedDockCount).length
+    const hangarsInUse = this.hangarOccupants.filter(o => o !== null).length
+    const publicHangarsInUse = this.hangarOccupants.filter((o, i) => o !== null && i >= this.base.ownedHangarCount).length
+    const usage = {
+      minersStored: this.base.stationMinerIds.length,
+      minerSlots: this.base.stationMinerSlotCount,
+      docksInUse,
+      docksTotal: SERVICE_SLOT_COUNT,
+      publicDocksInUse,
+      hangarsInUse,
+      hangarsTotal: HANGAR_BAY_COUNT,
+      publicHangarsInUse,
+    }
+    const key = JSON.stringify(usage)
+    if (key === this.lastStationUsageKey) return
+    this.lastStationUsageKey = key
+    stationUsage.set(usage)
+  }
+
+  private lastStationUsageKey = ''
 
   private assignDockSlot(ship: Ship): SlotPosition | null {
     const idx = this.slotOccupants.findIndex(occ => occ === null)
@@ -2230,6 +2254,7 @@ export class SpaceScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.drainCommandQueue()
+    this.pushStationUsage()
 
     const dt = delta / 1000
     this.gameClock += dt

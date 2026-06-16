@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { baseState, basePanelOpen } from '../state/baseStore'
+  import { baseState, basePanelOpen, stationUsage } from '../state/baseStore'
   import { commandQueue } from '../state/commandStore'
   import { selectedShip } from '../state/shipStore'
   import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
@@ -148,6 +148,25 @@
         <button class="commission-btn" disabled>Buy</button>
       </div>
     {/if}
+
+    <!-- Station usage -->
+    <div class="section-title">STATION USAGE</div>
+    <div class="row">
+      <span class="label">Miner storage</span>
+      <span class="value">{$stationUsage.minersStored}/{$stationUsage.minerSlots} used</span>
+    </div>
+    <div class="row">
+      <span class="label">Docks in use</span>
+      <span class="value">
+        {$stationUsage.docksInUse}/{$stationUsage.docksTotal}{#if $stationUsage.publicDocksInUse > 0} <span class="fee-note">({$stationUsage.publicDocksInUse} public · fees)</span>{/if}
+      </span>
+    </div>
+    <div class="row">
+      <span class="label">Hangars in use</span>
+      <span class="value">
+        {$stationUsage.hangarsInUse}/{$stationUsage.hangarsTotal}{#if $stationUsage.publicHangarsInUse > 0} <span class="fee-note">({$stationUsage.publicHangarsInUse} public · fees)</span>{/if}
+      </span>
+    </div>
 
     <!-- Station -->
     <div class="section-title">STATION</div>
@@ -314,6 +333,11 @@
 
   .value {
     color: #cce0f0;
+  }
+
+  .fee-note {
+    color: #ffaa66;
+    font-size: 0.85em;
   }
 
   .credits {

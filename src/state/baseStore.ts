@@ -28,3 +28,25 @@ export const baseState = writable<BaseState>({
 })
 
 export const basePanelOpen = writable<boolean>(false)
+
+export interface StationUsage {
+  minersStored: number
+  minerSlots: number
+  docksInUse: number
+  docksTotal: number
+  publicDocksInUse: number
+  hangarsInUse: number
+  hangarsTotal: number
+  publicHangarsInUse: number
+}
+
+export const stationUsage = writable<StationUsage>({
+  minersStored: 0,
+  minerSlots: 0,
+  docksInUse: 0,
+  docksTotal: 0,
+  publicDocksInUse: 0,
+  hangarsInUse: 0,
+  hangarsTotal: 0,
+  publicHangarsInUse: 0,
+})
