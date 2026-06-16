@@ -1071,6 +1071,29 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
+    // Un-stick haulers waiting at an asteroid that has nothing actionable left
+    // (its miner was destroyed on a re-attach, went dark, or was recovered, and
+    // there are no collectable nets) — they would otherwise wait forever.
+    for (const ship of this.ships) {
+      if (ship.shipState !== 'waiting-at-asteroid' || !ship.asteroidTarget) continue
+      if (this.shipAttachManeuver.has(ship.id)) continue // mid attach maneuver
+      const aId = ship.asteroidTarget.id
+      const asteroidGone = !this.asteroidMap.has(aId)
+      const hasActionableMiner = this.autoMiners.some(
+        m => m.asteroidId === aId &&
+          (m.state === 'mining' || m.state === 'net-starved' || m.state === 'ejecting-net' ||
+           m.state === 'attaching' || m.state === 'deploying' || m.state === 'drifting' ||
+           m.state === 'standby-beaconing'),
+      )
+      const hasCollectableNets = this.autoMiners.some(
+        m => m.asteroidId === aId &&
+          m.tetheredNetIds.some(id => this.cargoNetMap.get(id)?.state === 'full-tethered'),
+      )
+      if (asteroidGone || (!hasActionableMiner && !hasCollectableNets)) {
+        this.departShipForBase(ship)
+      }
+    }
+
     // (Removed the unconditional "deploy carried miners to nearest asteroid" loop:
     // deployment is now designation-driven only, and idle carriers recharge/store
     // their miners at base via the loop at the top of this method.)
