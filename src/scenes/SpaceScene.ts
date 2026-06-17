@@ -168,10 +168,15 @@ export class SpaceScene extends Phaser.Scene {
   private companyArrivalAccumulator = 0
   private followCam = false
   private minimap!: Phaser.GameObjects.Graphics
-  private slotPositions: SlotPosition[] = []
+  // Service-slot / hangar geometry stored as offsets from the base center; live
+  // positions = base position + offset (the base orbits, so these are dynamic).
+  private slotOffsets: SlotPosition[] = []
   private slotOccupants: Array<string | null> = []
-  private hangarPositions: HangarPosition[] = []
+  private hangarOffsets: HangarPosition[] = []
   private hangarOccupants: Array<string | null> = []
+  private slotMarkerGfx: Phaser.GameObjects.Graphics | null = null
+  private hangarMarkerGfx: Phaser.GameObjects.Graphics | null = null
+  private baseLabel: Phaser.GameObjects.Text | null = null
   private shipPendingUpgrades: Map<string, 'cargo'> = new Map()
   private shipPendingDesignationAsteroid: Map<string, string> = new Map()
   private designations: MiningDesignation[] = []
@@ -248,10 +253,12 @@ export class SpaceScene extends Phaser.Scene {
     this.base.stationMinerSlotCount = save.base.stationMinerSlotCount ?? 0
     this.base.stationMinerIds = [...(save.base.stationMinerIds ?? [])]
     this.base.autoDesignate = save.base.autoDesignate ?? false
+    if (save.base.orbitalAngle !== undefined) this.base.orbitalAngle = save.base.orbitalAngle
+    this.base.advanceOrbit(0) // reposition to the restored orbital angle
     this.base.pushToStore()
 
-    this.add
-      .text(BASE_X, BASE_Y + 40, 'BASE', {
+    this.baseLabel = this.add
+      .text(this.base.x, this.base.y + 40, 'BASE', {
         color: '#88ccff',
         fontSize: '12px',
         fontFamily: 'monospace',
@@ -259,6 +266,7 @@ export class SpaceScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
     this.initSlots()
     this.initHangars()
+    this.updateBaseAttachments()
 
     // Restore AutoMiners
     for (const snap of save.autoMiners) {
@@ -458,8 +466,8 @@ export class SpaceScene extends Phaser.Scene {
         if (this.base.storeAutoMiner(miner.id)) {
           miner.state = 'station-stored'
         } else {
-          miner.freeOrbitalRadius = BASE_Y
-          miner.freeOrbitalAngle = Math.atan2(BASE_Y, BASE_X) + 0.15
+          miner.freeOrbitalRadius = this.base.orbitalRadius
+          miner.freeOrbitalAngle = this.base.orbitalAngle + 0.15
           miner.setPosition(
             Math.cos(miner.freeOrbitalAngle) * miner.freeOrbitalRadius,
             Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
@@ -509,6 +517,7 @@ export class SpaceScene extends Phaser.Scene {
         stationMinerSlotCount: this.base.stationMinerSlotCount,
         stationMinerIds: [...this.base.stationMinerIds],
         autoDesignate: this.base.autoDesignate,
+        orbitalAngle: this.base.orbitalAngle,
       },
       asteroids: this.asteroids.map(a => ({
         id: a.id,
@@ -615,8 +624,8 @@ export class SpaceScene extends Phaser.Scene {
 
   private spawnBase(): void {
     this.base = new Base(this, BASE_X, BASE_Y)
-    this.add
-      .text(BASE_X, BASE_Y + 40, 'BASE', {
+    this.baseLabel = this.add
+      .text(this.base.x, this.base.y + 40, 'BASE', {
         color: '#88ccff',
         fontSize: '12px',
         fontFamily: 'monospace',
@@ -624,25 +633,72 @@ export class SpaceScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
     this.initSlots()
     this.initHangars()
+    this.updateBaseAttachments()
   }
 
   private initSlots(): void {
-    this.slotPositions = computeServiceSlots(BASE_X, BASE_Y)
+    // Offsets from base center (recomputed against (0,0)); live positions add base.
+    this.slotOffsets = computeServiceSlots(0, 0)
     this.slotOccupants = Array(SERVICE_SLOT_COUNT).fill(null)
-    const gfx = this.add.graphics()
-    gfx.lineStyle(1, 0x88ccff, 0.25)
-    for (const slot of this.slotPositions) {
-      gfx.strokeCircle(slot.x, slot.y, 8)
-    }
+    this.slotMarkerGfx = this.add.graphics()
   }
 
   private initHangars(): void {
-    this.hangarPositions = computeHangarBays(BASE_X, BASE_Y)
+    this.hangarOffsets = computeHangarBays(0, 0)
     this.hangarOccupants = Array(HANGAR_BAY_COUNT).fill(null)
-    const gfx = this.add.graphics()
-    gfx.lineStyle(1, 0xffaa44, 0.30)
-    for (const bay of this.hangarPositions) {
-      gfx.strokeCircle(bay.x, bay.y, 12)
+    this.hangarMarkerGfx = this.add.graphics()
+  }
+
+  /** Live world position of dock slot `idx` (base position + offset). */
+  private dockSlotPos(idx: number): { x: number; y: number } {
+    return { x: this.base.x + this.slotOffsets[idx].x, y: this.base.y + this.slotOffsets[idx].y }
+  }
+
+  /** Live world position of hangar bay `idx` (base position + offset). */
+  private hangarBayPos(idx: number): { x: number; y: number } {
+    return { x: this.base.x + this.hangarOffsets[idx].x, y: this.base.y + this.hangarOffsets[idx].y }
+  }
+
+  /** Repositions the base label, slot/hangar markers, and docked/serviced ships to
+   *  follow the (orbiting) base. Called each frame after the base advances. */
+  private updateBaseAttachments(): void {
+    if (this.baseLabel) this.baseLabel.setPosition(this.base.x, this.base.y + 40)
+
+    if (this.slotMarkerGfx) {
+      this.slotMarkerGfx.clear()
+      this.slotMarkerGfx.lineStyle(1, 0x88ccff, 0.25)
+      for (let i = 0; i < this.slotOffsets.length; i++) {
+        const p = this.dockSlotPos(i)
+        this.slotMarkerGfx.strokeCircle(p.x, p.y, 8)
+      }
+    }
+    if (this.hangarMarkerGfx) {
+      this.hangarMarkerGfx.clear()
+      this.hangarMarkerGfx.lineStyle(1, 0xffaa44, 0.30)
+      for (let i = 0; i < this.hangarOffsets.length; i++) {
+        const p = this.hangarBayPos(i)
+        this.hangarMarkerGfx.strokeCircle(p.x, p.y, 12)
+      }
+    }
+
+    // Keep ships glued to / aimed at their (moving) service slot or hangar bay.
+    for (const ship of this.ships) {
+      if (ship.dockSlotIndex !== null) {
+        const pos = this.dockSlotPos(ship.dockSlotIndex)
+        if (ship.shipState === 'unloading') ship.setPosition(pos.x, pos.y)
+        else if (ship.shipState === 'traveling-to-base') ship.target = pos
+      }
+      if (ship.hangarSlotIndex !== null) {
+        const pos = this.hangarBayPos(ship.hangarSlotIndex)
+        if (ship.shipState === 'in-hangar' || ship.shipState === 'entering-hangar') ship.setPosition(pos.x, pos.y)
+        else if (ship.shipState === 'traveling-to-hangar') ship.target = pos
+      }
+      if (ship.shipState === 'traveling-to-base' && ship.dockSlotIndex === null) {
+        ship.target = { x: this.base.x, y: this.base.y }
+      }
+      if (ship.shipState === 'fetching-station-miner') {
+        ship.target = { x: this.base.x, y: this.base.y }
+      }
     }
   }
 
@@ -675,7 +731,7 @@ export class SpaceScene extends Phaser.Scene {
     if (idx < 0) return null
     this.slotOccupants[idx] = ship.id
     ship.dockSlotIndex = idx
-    return this.slotPositions[idx]
+    return this.dockSlotPos(idx)
   }
 
   private releaseDockSlot(ship: Ship): void {
@@ -696,7 +752,7 @@ export class SpaceScene extends Phaser.Scene {
     if (idx < 0) return null
     this.hangarOccupants[idx] = ship.id
     ship.hangarSlotIndex = idx
-    return this.hangarPositions[idx]
+    return this.hangarBayPos(idx)
   }
 
   private releaseHangarSlot(ship: Ship): void {
@@ -719,7 +775,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private spawnStarterShip(): void {
-    const ship = new Ship(this, BASE_X, BASE_Y, 'Hauler-01', { x: BASE_X, y: BASE_Y }, this.base)
+    const ship = new Ship(this, this.base.x, this.base.y, 'Hauler-01', { x: this.base.x, y: this.base.y }, this.base)
 
     // Pre-load one AutoMiner on the first medium attachment point
     const miner = new AutoMiner(this)
@@ -967,7 +1023,7 @@ export class SpaceScene extends Phaser.Scene {
     // designation-driven only — there is no auto-deploy to arbitrary asteroids.
     for (const ship of this.ships) {
       if (ship.shipState !== 'idle') continue
-      if (Phaser.Math.Distance.Between(ship.x, ship.y, BASE_X, BASE_Y) >= PROXIMITY_BASE_RADIUS) continue
+      if (Phaser.Math.Distance.Between(ship.x, ship.y, this.base.x, this.base.y) >= PROXIMITY_BASE_RADIUS) continue
       for (const ap of ship.attachmentPoints) {
         if (ap.payload?.kind !== 'auto-miner') continue
         const miner = this.autoMinerMap.get(ap.payload.minerId)
@@ -1213,7 +1269,7 @@ export class SpaceScene extends Phaser.Scene {
       m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dPlanet / PROXIMITY_PLANET_RADIUS))
     }
 
-    const dBase = Phaser.Math.Distance.Between(ship.x, ship.y, BASE_X, BASE_Y)
+    const dBase = Phaser.Math.Distance.Between(ship.x, ship.y, this.base.x, this.base.y)
     if (dBase < PROXIMITY_BASE_RADIUS) {
       m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dBase / PROXIMITY_BASE_RADIUS))
     }
@@ -1253,7 +1309,7 @@ export class SpaceScene extends Phaser.Scene {
 
     this.minimap.fillStyle(MINIMAP_COLOR_BASE, 1)
     const baseHalf = MINIMAP_DOT_BASE / zoom / 2
-    this.minimap.fillRect(wx(BASE_X) - baseHalf, wy(BASE_Y) - baseHalf, MINIMAP_DOT_BASE / zoom, MINIMAP_DOT_BASE / zoom)
+    this.minimap.fillRect(wx(this.base.x) - baseHalf, wy(this.base.y) - baseHalf, MINIMAP_DOT_BASE / zoom, MINIMAP_DOT_BASE / zoom)
 
     for (const asteroid of this.asteroids) {
       const color = asteroid.isCompany ? MINIMAP_COLOR_COMPANY : MINIMAP_COLOR_ASTEROID
@@ -1784,7 +1840,7 @@ export class SpaceScene extends Phaser.Scene {
       this.autoMinerMap.delete(miner.id)
       miner.destroy()
       ship.shipState = 'traveling-to-base'
-      ship.target = { x: BASE_X, y: BASE_Y }
+      ship.target = { x: this.base.x, y: this.base.y }
       ship.pushToStore()
       return
     }
@@ -1905,8 +1961,8 @@ export class SpaceScene extends Phaser.Scene {
       miner.beaconReason = null
     } else {
       // No storage slot free — eject to orbit near base for beacon recovery
-      miner.freeOrbitalRadius = BASE_Y
-      miner.freeOrbitalAngle = Math.atan2(BASE_Y, BASE_X) + 0.15
+      miner.freeOrbitalRadius = this.base.orbitalRadius
+      miner.freeOrbitalAngle = this.base.orbitalAngle + 0.15
       miner.setPosition(
         Math.cos(miner.freeOrbitalAngle) * miner.freeOrbitalRadius,
         Math.sin(miner.freeOrbitalAngle) * miner.freeOrbitalRadius - 20,
@@ -1934,9 +1990,9 @@ export class SpaceScene extends Phaser.Scene {
     const name = `Hauler-${String(index).padStart(2, '0')}`
     const offset = 40 + (index % 4) * 20
     const angle = (index * 90) % 360
-    const spawnX = BASE_X + Math.cos(Phaser.Math.DegToRad(angle)) * offset
-    const spawnY = BASE_Y + Math.sin(Phaser.Math.DegToRad(angle)) * offset
-    const ship = new Ship(this, spawnX, spawnY, name, { x: BASE_X, y: BASE_Y }, this.base)
+    const spawnX = this.base.x + Math.cos(Phaser.Math.DegToRad(angle)) * offset
+    const spawnY = this.base.y + Math.sin(Phaser.Math.DegToRad(angle)) * offset
+    const ship = new Ship(this, spawnX, spawnY, name, { x: this.base.x, y: this.base.y }, this.base)
     this.ships.push(ship)
     this.base.registerShip(ship.id)
     this.attachShipEvents(ship)
@@ -1986,7 +2042,7 @@ export class SpaceScene extends Phaser.Scene {
       ship.pushToStore()
       return
     }
-    const slotPos = this.hangarPositions[slotIdx]
+    const slotPos = this.hangarBayPos(slotIdx)
     const isOwnedPressurized = slotIdx < this.base.ownedHangarCount && this.base.hangarPressurized
     const duration = UPGRADE_HANGAR_DURATION * (isOwnedPressurized ? HANGAR_PRESSURIZED_FACTOR : 1)
     ship.enterHangar(slotPos, duration)
@@ -2371,6 +2427,11 @@ export class SpaceScene extends Phaser.Scene {
 
     const dt = delta / 1000
     this.gameClock += dt
+
+    // Advance the base along its orbit, then move everything anchored to it
+    // (label, slot/hangar markers, docked/serviced ships).
+    this.base.advanceOrbit(dt)
+    this.updateBaseAttachments()
 
     this.autoSaveAccumulator += dt
     if (this.autoSaveAccumulator >= AUTO_SAVE_INTERVAL) {

@@ -79,6 +79,7 @@ export interface BaseSnapshot {
   stationMinerSlotCount: number
   stationMinerIds: string[]
   autoDesignate: boolean
+  orbitalAngle: number
 }
 
 export interface MiningDesignationSnapshot {
@@ -104,7 +105,7 @@ export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false },
+  base: { storage: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
   asteroids: [],
   ships: [],
   autoMiners: [],

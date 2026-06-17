@@ -285,7 +285,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   departForBase(slotTarget?: { x: number; y: number }): void {
     this.collectSlotProgress.clear()
     this.shipState = 'traveling-to-base'
-    this.target = slotTarget ? { ...slotTarget } : { ...this.basePosition }
+    // Fall back to the live base position (the base orbits); the scene also
+    // re-targets in-flight ships each frame to track the moving slot/base.
+    this.target = slotTarget ? { ...slotTarget } : { x: this.base.x, y: this.base.y }
     this.asteroidTarget = null
     this.waitOrbitalAngle = null
     this.minerTarget = null

@@ -11,6 +11,9 @@ export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
 export const STARTING_CREDITS = 750
 export const SHIP_COMMISSION_COST = 500
+// Keplerian constant for the base's orbit around the planet. Matches the world
+// ORBITAL_K for a consistent feel; tunable here if the base should orbit slower.
+export const BASE_ORBIT_K = 500
 
 const OUTER_R = 32
 const INNER_R = 20
@@ -40,9 +43,14 @@ export class Base extends Phaser.GameObjects.Image {
   stationMinerSlotCount: number
   stationMinerIds: string[]
   autoDesignate: boolean
+  orbitalRadius: number
+  orbitalAngle: number
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
+    // Orbit the planet (world center) through the construction point.
+    this.orbitalRadius = Math.max(Math.hypot(x, y), 1)
+    this.orbitalAngle = Math.atan2(y, x)
     this.storageCapacity = BASE_STORAGE_CAPACITY
     this.storage = {}
     this.credits = STARTING_CREDITS
@@ -59,6 +67,15 @@ export class Base extends Phaser.GameObjects.Image {
       Phaser.Geom.Circle.Contains,
     )
     this.pushToStore()
+  }
+
+  /** Advances the base along its orbit and repositions it (planet at world center). */
+  advanceOrbit(dt: number): void {
+    this.orbitalAngle += (BASE_ORBIT_K / this.orbitalRadius ** 1.5) * dt
+    this.setPosition(
+      Math.cos(this.orbitalAngle) * this.orbitalRadius,
+      Math.sin(this.orbitalAngle) * this.orbitalRadius,
+    )
   }
 
   totalStored(): number {
