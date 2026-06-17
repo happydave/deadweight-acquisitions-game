@@ -82,6 +82,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   attachUnloadActive: boolean = false
   waitOrbitalAngle: number | null = null
   dockSlotIndex: number | null = null
+  dockIsPublic: boolean = false // docked at a public (fee) dock vs a free owned one
   hangarSlotIndex: number | null = null
   hangarServiceTimer: number = 0
   minerTarget: AutoMiner | null = null

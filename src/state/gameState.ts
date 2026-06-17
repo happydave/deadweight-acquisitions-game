@@ -62,6 +62,7 @@ export interface ShipSnapshot {
   attachUnloadTimer: number
   waitOrbitalAngle: number | null
   dockSlotIndex: number | null
+  dockIsPublic: boolean
   hangarSlotIndex: number | null
   hangarServiceTimer: number
   thrusterFuel: number

@@ -32,9 +32,9 @@ export const basePanelOpen = writable<boolean>(false)
 export interface StationUsage {
   minersStored: number
   minerSlots: number
-  docksInUse: number
-  docksTotal: number
-  publicDocksInUse: number
+  ownedDocksInUse: number
+  ownedDocksTotal: number
+  publicDocksInUse: number // ships docked at a public (fee) dock; public docks are unlimited
   hangarsInUse: number
   hangarsTotal: number
   publicHangarsInUse: number
@@ -43,8 +43,8 @@ export interface StationUsage {
 export const stationUsage = writable<StationUsage>({
   minersStored: 0,
   minerSlots: 0,
-  docksInUse: 0,
-  docksTotal: 0,
+  ownedDocksInUse: 0,
+  ownedDocksTotal: 0,
   publicDocksInUse: 0,
   hangarsInUse: 0,
   hangarsTotal: 0,

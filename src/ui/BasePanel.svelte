@@ -156,9 +156,9 @@
       <span class="value">{$stationUsage.minersStored}/{$stationUsage.minerSlots} used</span>
     </div>
     <div class="row">
-      <span class="label">Docks in use</span>
+      <span class="label">Owned docks</span>
       <span class="value">
-        {$stationUsage.docksInUse}/{$stationUsage.docksTotal}{#if $stationUsage.publicDocksInUse > 0} <span class="fee-note">({$stationUsage.publicDocksInUse} public · fees)</span>{/if}
+        {$stationUsage.ownedDocksInUse}/{$stationUsage.ownedDocksTotal} in use{#if $stationUsage.publicDocksInUse > 0} <span class="fee-note">+{$stationUsage.publicDocksInUse} public · fees</span>{/if}
       </span>
     </div>
     <div class="row">

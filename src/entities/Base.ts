@@ -109,9 +109,8 @@ export class Base extends Phaser.GameObjects.Image {
     this.pushToStore()
   }
 
-  chargeDockFee(dockSlotIndex: number | null): void {
-    if (dockSlotIndex === null) return
-    if (dockSlotIndex < this.ownedDockCount) return  // owned dock — no fee
+  chargeDockFee(isPublic: boolean): void {
+    if (!isPublic) return  // owned dock — no fee
     this.credits -= getPrice('dock-cargo-drop')
     this.pushToStore()
   }

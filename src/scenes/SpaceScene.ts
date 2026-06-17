@@ -388,11 +388,12 @@ export class SpaceScene extends Phaser.Scene {
       }
       ship.waitOrbitalAngle = snap.waitOrbitalAngle
 
-      // Restore dock slot assignment
+      // Restore dock slot assignment (public docks don't reserve occupancy)
       const savedSlot = snap.dockSlotIndex ?? null
+      ship.dockIsPublic = snap.dockIsPublic ?? false
       if (savedSlot !== null && savedSlot >= 0 && savedSlot < this.slotOccupants.length) {
         ship.dockSlotIndex = savedSlot
-        this.slotOccupants[savedSlot] = ship.id
+        if (!ship.dockIsPublic) this.slotOccupants[savedSlot] = ship.id
       }
 
       // Restore hangar slot assignment
@@ -551,6 +552,7 @@ export class SpaceScene extends Phaser.Scene {
         attachUnloadTimer: s.attachUnloadTimer,
         waitOrbitalAngle: s.waitOrbitalAngle,
         dockSlotIndex: s.dockSlotIndex,
+        dockIsPublic: s.dockIsPublic,
         hangarSlotIndex: s.hangarSlotIndex,
         hangarServiceTimer: s.hangarServiceTimer,
         thrusterFuel: s.thrusterFuel,
@@ -725,15 +727,17 @@ export class SpaceScene extends Phaser.Scene {
 
   /** Pushes station capacity/usage to the UI store (change-guarded). */
   private pushStationUsage(): void {
-    const docksInUse = this.slotOccupants.filter(o => o !== null).length
-    const publicDocksInUse = this.slotOccupants.filter((o, i) => o !== null && i >= this.base.ownedDockCount).length
+    // Owned docks are occupancy-tracked (first ownedDockCount slots); public docks
+    // are unlimited — count ships currently docked at a public dock.
+    const ownedDocksInUse = this.slotOccupants.slice(0, this.base.ownedDockCount).filter(o => o !== null).length
+    const publicDocksInUse = this.ships.filter(s => s.dockIsPublic && s.dockSlotIndex !== null).length
     const hangarsInUse = this.hangarOccupants.filter(o => o !== null).length
     const publicHangarsInUse = this.hangarOccupants.filter((o, i) => o !== null && i >= this.base.ownedHangarCount).length
     const usage = {
       minersStored: this.base.stationMinerIds.length,
       minerSlots: this.base.stationMinerSlotCount,
-      docksInUse,
-      docksTotal: SERVICE_SLOT_COUNT,
+      ownedDocksInUse,
+      ownedDocksTotal: this.base.ownedDockCount,
       publicDocksInUse,
       hangarsInUse,
       hangarsTotal: HANGAR_BAY_COUNT,
@@ -747,25 +751,36 @@ export class SpaceScene extends Phaser.Scene {
 
   private lastStationUsageKey = ''
 
-  private assignDockSlot(ship: Ship): SlotPosition | null {
-    const idx = this.slotOccupants.findIndex(occ => occ === null)
-    if (idx < 0) return null
-    this.slotOccupants[idx] = ship.id
-    ship.dockSlotIndex = idx
-    return this.dockSlotPos(idx)
+  // Docks are effectively infinite: a returning hauler always docks — at a free
+  // owned dock (no fee) if available, otherwise a public dock (fee, unlimited,
+  // ships stack on a public dock-ring position). Never returns null.
+  private assignDockSlot(ship: Ship): SlotPosition {
+    for (let i = 0; i < this.base.ownedDockCount; i++) {
+      if (this.slotOccupants[i] === null) {
+        this.slotOccupants[i] = ship.id
+        ship.dockSlotIndex = i
+        ship.dockIsPublic = false
+        return this.dockSlotPos(i)
+      }
+    }
+    // Public overflow: a visual dock-ring position (stacked), no occupancy reserve.
+    const publicIdx = Math.min(this.base.ownedDockCount, SERVICE_SLOT_COUNT - 1)
+    ship.dockSlotIndex = publicIdx
+    ship.dockIsPublic = true
+    return this.dockSlotPos(publicIdx)
   }
 
   private releaseDockSlot(ship: Ship): void {
     const idx = ship.dockSlotIndex
-    if (idx !== null && idx >= 0 && idx < this.slotOccupants.length) {
+    if (!ship.dockIsPublic && idx !== null && idx >= 0 && idx < this.slotOccupants.length) {
       this.slotOccupants[idx] = null
     }
     ship.dockSlotIndex = null
+    ship.dockIsPublic = false
   }
 
   private departShipForBase(ship: Ship): void {
-    const slot = this.assignDockSlot(ship)
-    ship.departForBase(slot ?? undefined)
+    ship.departForBase(this.assignDockSlot(ship))
   }
 
   private assignHangarSlot(ship: Ship): HangarPosition | null {
@@ -838,7 +853,7 @@ export class SpaceScene extends Phaser.Scene {
       })
     })
     ship.on('unload-complete', () => {
-      this.base.chargeDockFee(ship.dockSlotIndex)
+      this.base.chargeDockFee(ship.dockIsPublic)
       this.releaseDockSlot(ship)
       if (ship.thrusterFuel < HAULER_FUEL_MAX || ship.rcsFuel < HAULER_RCS_MAX) {
         this.base.credits -= getPrice('dock-refuel')
