@@ -177,6 +177,9 @@ export class SpaceScene extends Phaser.Scene {
   private slotMarkerGfx: Phaser.GameObjects.Graphics | null = null
   private hangarMarkerGfx: Phaser.GameObjects.Graphics | null = null
   private baseLabel: Phaser.GameObjects.Text | null = null
+  // Ships parked/holding at the base keep a fixed offset from it so they orbit with
+  // the base (idle haulers, and slot-less haulers waiting to unload).
+  private shipParkOffsets: Map<string, { dx: number; dy: number }> = new Map()
   private shipPendingUpgrades: Map<string, 'cargo'> = new Map()
   private shipPendingDesignationAsteroid: Map<string, string> = new Map()
   private designations: MiningDesignation[] = []
@@ -699,6 +702,24 @@ export class SpaceScene extends Phaser.Scene {
       if (ship.shipState === 'fetching-station-miner') {
         ship.target = { x: this.base.x, y: this.base.y }
       }
+
+      // Station-keeping: idle haulers near the base, and slot-less haulers holding
+      // to unload, keep a fixed offset from the base so they orbit with it.
+      const stationKeep =
+        (ship.shipState === 'idle' &&
+          Phaser.Math.Distance.Between(ship.x, ship.y, this.base.x, this.base.y) <= PROXIMITY_BASE_RADIUS) ||
+        (ship.shipState === 'unloading' && ship.dockSlotIndex === null)
+      if (stationKeep) {
+        let off = this.shipParkOffsets.get(ship.id)
+        if (!off) {
+          off = { dx: ship.x - this.base.x, dy: ship.y - this.base.y }
+          this.shipParkOffsets.set(ship.id, off)
+        }
+        ship.setPosition(this.base.x + off.dx, this.base.y + off.dy)
+        ship.setVelocity(0, 0)
+      } else {
+        this.shipParkOffsets.delete(ship.id)
+      }
     }
   }
 
@@ -968,6 +989,11 @@ export class SpaceScene extends Phaser.Scene {
     const netAp = ship.attachmentPoints.find(a => a.payload?.kind === 'cargo-net')
     if (netAp && netAp.payload?.kind === 'cargo-net') {
       const net = this.cargoNetMap.get(netAp.payload.netId)
+      if (net && !this.base.canAcceptCargo({ [net.resourceType]: net.quantity })) {
+        // Storage can't hold this net yet — hold it and retry next tick (never
+        // overfill, never lose the cargo) rather than dropping it in place.
+        return
+      }
       if (net) {
         this.base.acceptCargo({ [net.resourceType]: net.quantity })
         this.cargoNetMap.delete(net.id)

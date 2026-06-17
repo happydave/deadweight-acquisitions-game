@@ -216,6 +216,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         this.setVelocity(0, 0)
         break
       case 'idle':
+        this.setVelocity(0, 0)
         break
     }
   }
