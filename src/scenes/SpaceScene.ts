@@ -268,6 +268,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.battery = snap.battery ?? MINER_BATTERY_MAX
       miner.rcsFuel = snap.rcsFuel ?? MINER_RCS_MAX
       miner.beaconReason = snap.beaconReason ?? null
+      miner.activeResourceType = snap.activeResourceType ?? null
       miner.asteroidId = snap.asteroidId
       miner.spareNetCount = snap.spareNetCount
       miner.activeNetFill = snap.activeNetFill
@@ -559,6 +560,7 @@ export class SpaceScene extends Phaser.Scene {
         battery: m.battery,
         rcsFuel: m.rcsFuel,
         beaconReason: m.beaconReason,
+        activeResourceType: m.activeResourceType,
       })),
       cargoNets: this.cargoNets
         .filter(n => n.state === 'full-tethered')
@@ -1553,6 +1555,7 @@ export class SpaceScene extends Phaser.Scene {
       const freeSlot = waitingShip.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
       if (freeSlot) {
         freeSlot.payload = { kind: 'auto-miner', minerId: miner.id }
+        miner.ejectActiveNet() // bring home the partial net too
         this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
         minerRecovered = true
       } else {
@@ -1636,6 +1639,10 @@ export class SpaceScene extends Phaser.Scene {
     activeBeacons.update(beacons => beacons.filter(b => b.id !== minerId))
     miner.pushToStore()
     ship.minerTarget = miner
+
+    // Eject the partial active net so its resources come home (collected if a slot
+    // is free, otherwise orphaned to free-orbit — never lost).
+    miner.ejectActiveNet()
 
     // Step 2: collect any tethered nets as separate per-item steps (beginCollecting
     // no-ops if none), then orphan whatever did not fit and head home.
@@ -2534,6 +2541,7 @@ export class SpaceScene extends Phaser.Scene {
               this.departShipForBase(waitingShip)
               return
             }
+            miner.ejectActiveNet() // bring home the partial net too
             this.beginCollecting(waitingShip, miner, () => this.performAtAsteroidRecovery(waitingShip, miner))
           })
         } else {

@@ -110,6 +110,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   asteroidId: string | null
   spareNetCount: number
   activeNetFill: number
+  activeResourceType: ResourceType | null = null // type of the in-progress active net
   tetheredNetIds: string[]
   readonly technologyLevel: number
   isSelected: boolean
@@ -170,6 +171,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     const extracted = Math.min(effectiveRate * dt, asteroid.currentQuantity)
     asteroid.currentQuantity -= extracted
     this.activeNetFill += extracted
+    this.activeResourceType = asteroid.resourceType
     asteroid.pushToStore()
 
     if (asteroid.currentQuantity <= 0) {
@@ -203,6 +205,22 @@ export class AutoMiner extends Phaser.GameObjects.Image {
       this.state = 'net-starved'
     }
 
+    this.pushToStore()
+  }
+
+  /**
+   * Ejects the partial (not-yet-full) active net for transport when the miner is
+   * recovered, so its accumulated resources are not stranded. Creates a
+   * full-tethered CargoNet the recovery flow then collects (or orphans, never
+   * loses). No-op if there is no fill or the resource type is unknown.
+   */
+  ejectActiveNet(): void {
+    if (this.activeNetFill <= 0 || this.activeResourceType === null) return
+    const net = new CargoNet(this.scene, this.activeResourceType, this.activeNetFill, this.asteroidId)
+    net.setPosition(this.x + 10, this.y - 10)
+    this.tetheredNetIds = [...this.tetheredNetIds, net.id]
+    this.activeNetFill = 0
+    this.emit('net-ejected', net)
     this.pushToStore()
   }
 

@@ -42,6 +42,7 @@ export interface AutoMinerSnapshot {
   battery: number
   rcsFuel: number
   beaconReason: BeaconReason
+  activeResourceType: ResourceType | null
 }
 
 export interface ShipSnapshot {
