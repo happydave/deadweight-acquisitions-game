@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { shipHasFreeMediumSlot, selectDispatchTarget, selectHaulerForDesignation } from './dispatchLogic'
+import { designationsToRevert, chooseDock, shouldReleaseWaitingHauler, planNetCollection } from './simLogic'
 import type { AttachmentPayload } from '../state/attachmentTypes'
 import { nanoid } from 'nanoid'
 import { get } from 'svelte/store'
@@ -757,19 +758,15 @@ export class SpaceScene extends Phaser.Scene {
   // owned dock (no fee) if available, otherwise a public dock (fee, unlimited,
   // ships stack on a public dock-ring position). Never returns null.
   private assignDockSlot(ship: Ship): SlotPosition {
-    for (let i = 0; i < this.base.ownedDockCount; i++) {
-      if (this.slotOccupants[i] === null) {
-        this.slotOccupants[i] = ship.id
-        ship.dockSlotIndex = i
-        ship.dockIsPublic = false
-        return this.dockSlotPos(i)
-      }
-    }
-    // Public overflow: a visual dock-ring position (stacked), no occupancy reserve.
-    const publicIdx = Math.min(this.base.ownedDockCount, SERVICE_SLOT_COUNT - 1)
-    ship.dockSlotIndex = publicIdx
-    ship.dockIsPublic = true
-    return this.dockSlotPos(publicIdx)
+    const choice = chooseDock(
+      this.base.ownedDockCount,
+      this.slotOccupants.map(o => o !== null),
+      SERVICE_SLOT_COUNT - 1,
+    )
+    ship.dockSlotIndex = choice.index
+    ship.dockIsPublic = choice.isPublic
+    if (!choice.isPublic) this.slotOccupants[choice.index] = ship.id // owned: reserve
+    return this.dockSlotPos(choice.index)
   }
 
   private releaseDockSlot(ship: Ship): void {
@@ -908,7 +905,7 @@ export class SpaceScene extends Phaser.Scene {
       .map((ap, idx) => ({ ap, idx }))
       .filter(({ ap }) => ap.size === 'medium' && ap.payload === null)
 
-    const collectCount = Math.min(fullNetIds.length, emptyMediumSlotPairs.length)
+    const collectCount = planNetCollection(fullNetIds, emptyMediumSlotPairs.length).collect.length
 
     if (collectCount === 0) {
       complete()
@@ -1085,16 +1082,21 @@ export class SpaceScene extends Phaser.Scene {
     // is attached to it any more (recovered, low-battery, or destroyed), revert to
     // queued so a replacement is (re)dispatched. Depleted asteroids are retired
     // elsewhere, so their designations are already gone.
-    let reconciled = false
-    for (const d of this.designations) {
-      if (d.status !== 'fulfilled') continue
-      if (!this.asteroidMap.has(d.asteroidId)) continue
-      if (this.autoMiners.some(m => m.asteroidId === d.asteroidId)) continue
-      d.status = 'queued'
-      d.claimedByShipId = null
-      reconciled = true
+    const minedAsteroidIds = new Set(this.autoMiners.map(m => m.asteroidId).filter((id): id is string => id !== null))
+    const revertIds = new Set(designationsToRevert(
+      this.designations,
+      id => this.asteroidMap.has(id),
+      id => minedAsteroidIds.has(id),
+    ))
+    if (revertIds.size > 0) {
+      for (const d of this.designations) {
+        if (revertIds.has(d.id)) {
+          d.status = 'queued'
+          d.claimedByShipId = null
+        }
+      }
+      designationQueue.set([...this.designations])
     }
-    if (reconciled) designationQueue.set([...this.designations])
 
     // Fulfil queued mining designations
     for (const designation of [...this.designations]) {
@@ -1200,7 +1202,7 @@ export class SpaceScene extends Phaser.Scene {
         m => m.asteroidId === aId &&
           m.tetheredNetIds.some(id => this.cargoNetMap.get(id)?.state === 'full-tethered'),
       )
-      if (asteroidGone || (!hasActionableMiner && !hasCollectableNets)) {
+      if (shouldReleaseWaitingHauler(!asteroidGone, hasActionableMiner, hasCollectableNets)) {
         this.departShipForBase(ship)
       }
     }
