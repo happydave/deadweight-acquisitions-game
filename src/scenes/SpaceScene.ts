@@ -1293,14 +1293,14 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     const seen = new Set<string>()
-    const label = (key: string, x: number, y: number, text: string, color: string) => {
+    const label = (key: string, x: number, y: number, text: string, color: string, below = false) => {
       seen.add(key)
       let t = this.debugLabels.get(key)
       if (!t) {
-        t = this.add.text(0, 0, '', { fontSize: '9px', fontFamily: 'monospace', color })
-          .setDepth(50).setOrigin(0.5, 1)
+        t = this.add.text(0, 0, '', { fontSize: '9px', fontFamily: 'monospace', color }).setDepth(50)
         this.debugLabels.set(key, t)
       }
+      t.setOrigin(0.5, below ? 0 : 1) // below → anchor top (text under the point)
       if (t.text !== text) t.setText(text)
       t.setPosition(x, y)
       t.setVisible(true)
@@ -1325,12 +1325,12 @@ export class SpaceScene extends Phaser.Scene {
       const tag = net.freeOrbitalRadius !== null
         ? (net.designatedForCollection ? 'untethered·desig' : 'untethered')
         : net.state
-      label(`n:${net.id}`, net.x, net.y - 8, `${tag} ${Math.floor(net.quantity)}`, '#ffcc66')
+      label(`n:${net.id}`, net.x, net.y + 8, `${tag} ${Math.floor(net.quantity)}`, '#ffcc66', true)
     }
     for (const d of this.designations) {
       const ast = this.asteroidMap.get(d.asteroidId)
       if (!ast) continue
-      label(`d:${d.asteroidId}`, ast.x, ast.y - 14, `[${d.status}]`, '#88ffaa')
+      label(`d:${d.asteroidId}`, ast.x, ast.y + 14, `[${d.status}]`, '#88ffaa', true)
     }
 
     for (const [key, t] of this.debugLabels) {

@@ -280,7 +280,8 @@
     border: 1px solid #2a4a6a;
     border-radius: 4px;
     padding: 12px 16px;
-    min-width: 240px;
+    width: 320px;            /* fixed so content changes don't resize the panel */
+    box-sizing: border-box;
     font-family: monospace;
     font-size: 12px;
     color: #aaccee;
