@@ -63,6 +63,32 @@ export function generateShipTexture(scene: Phaser.Scene): void {
   gfx.destroy()
 }
 
+export const PARTICLE_TEXTURE_KEY = 'fx-particle'
+
+/** Soft round dot used (tinted) for both thruster exhaust and RCS puffs. */
+export function generateParticleTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(PARTICLE_TEXTURE_KEY)) return
+  const size = 12
+  const c = size / 2
+  const gfx = scene.make.graphics({ x: 0, y: 0 })
+  // Layered translucent circles approximate a soft radial falloff.
+  gfx.fillStyle(0xffffff, 0.25)
+  gfx.fillCircle(c, c, c)
+  gfx.fillStyle(0xffffff, 0.45)
+  gfx.fillCircle(c, c, c * 0.6)
+  gfx.fillStyle(0xffffff, 1)
+  gfx.fillCircle(c, c, c * 0.3)
+  gfx.generateTexture(PARTICLE_TEXTURE_KEY, size, size)
+  gfx.destroy()
+}
+
+// Exhaust plume geometry/timing.
+const EXHAUST_OFFSET = 12        // world units behind the hull center
+const EXHAUST_SPREAD = 12        // degrees of cone half-angle
+// RCS puff timing/geometry.
+const RCS_PUFF_INTERVAL = 0.28   // seconds between maneuvering puffs
+const RCS_FLANK_OFFSET = 7       // world units to the side of the hull
+
 export class Ship extends Phaser.Physics.Arcade.Sprite {
   readonly id: string
   readonly shipName: string
@@ -94,6 +120,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private progressBarGfx: Phaser.GameObjects.Graphics | null = null
   private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
   private slotGfx: Phaser.GameObjects.Graphics | null = null
+  private exhaustEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
+  private rcsEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
+  private rcsPuffCooldown = 0
   isSelected: boolean
 
   constructor(
@@ -137,14 +166,32 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.pushToStore()
   }
 
-  updateSteering(dt: number): void {
-    const isTransit =
+  /** True while the hull is under main-thruster transit (burns thrusterFuel). */
+  private inTransit(): boolean {
+    return (
       this.shipState === 'traveling-to-asteroid' ||
       this.shipState === 'traveling-to-base' ||
       this.shipState === 'responding-to-beacon' ||
       this.shipState === 'traveling-to-hangar' ||
       this.shipState === 'fetching-station-miner' ||
       this.shipState === 'moving'
+    )
+  }
+
+  /** True while the hull is holding position on RCS (drains rcsFuel). */
+  private inManeuver(): boolean {
+    return (
+      this.shipState === 'entering-hangar' ||
+      this.shipState === 'deploying-miner' ||
+      this.shipState === 'waiting-at-asteroid' ||
+      this.shipState === 'collecting-nets' ||
+      this.shipState === 'resupplying-miner' ||
+      this.shipState === 'loading-miner'
+    )
+  }
+
+  updateSteering(dt: number): void {
+    const isTransit = this.inTransit()
     if (isTransit) {
       if (this.thrusterFuel <= 0) {
         this.setVelocity(0, 0)
@@ -423,7 +470,81 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       this.slotGfx.destroy()
       this.slotGfx = null
     }
+    if (this.exhaustEmitter !== null) {
+      this.exhaustEmitter.destroy()
+      this.exhaustEmitter = null
+    }
+    if (this.rcsEmitter !== null) {
+      this.rcsEmitter.destroy()
+      this.rcsEmitter = null
+    }
     super.destroy(fromScene)
+  }
+
+  private ensureEmitters(): void {
+    if (this.exhaustEmitter !== null) return
+    if (!this.scene.textures.exists(PARTICLE_TEXTURE_KEY)) return
+    this.exhaustEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
+      lifespan: 420,
+      speed: { min: 30, max: 70 },
+      scale: { start: 0.55, end: 0 },
+      alpha: { start: 0.85, end: 0 },
+      tint: [0xffffff, 0xffd27f, 0xff8a3c],
+      blendMode: 'ADD',
+      frequency: 28,
+      quantity: 1,
+      emitting: false,
+    })
+    this.exhaustEmitter.setDepth(this.depth - 1)
+    this.rcsEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
+      lifespan: 260,
+      speed: { min: 10, max: 30 },
+      scale: { start: 0.3, end: 0 },
+      alpha: { start: 0.7, end: 0 },
+      tint: [0xcfe8ff, 0xffffff],
+      blendMode: 'ADD',
+      emitting: false,
+    })
+    this.rcsEmitter.setDepth(this.depth - 1)
+  }
+
+  /**
+   * Drive thruster exhaust and RCS-puff particles from the current motion state.
+   * Called each frame by the scene after updateSteering. Exhaust streams behind
+   * the hull while in transit; RCS fires intermittent flank puffs while
+   * maneuvering (holding station on RCS).
+   */
+  updateThrusters(dt: number): void {
+    this.ensureEmitters()
+    if (this.exhaustEmitter === null || this.rcsEmitter === null) return
+
+    const rad = Phaser.Math.DegToRad(this.heading)
+
+    // Continuous exhaust plume behind the hull while thrusting.
+    if (this.inTransit()) {
+      const rearX = this.x - Math.cos(rad) * EXHAUST_OFFSET
+      const rearY = this.y - Math.sin(rad) * EXHAUST_OFFSET
+      this.exhaustEmitter.setPosition(rearX, rearY)
+      const back = this.heading + 180
+      this.exhaustEmitter.setEmitterAngle({ min: back - EXHAUST_SPREAD, max: back + EXHAUST_SPREAD })
+      this.exhaustEmitter.emitting = true
+    } else {
+      this.exhaustEmitter.emitting = false
+    }
+
+    // Intermittent RCS puffs from a flank while maneuvering on RCS.
+    if (this.inManeuver()) {
+      this.rcsPuffCooldown -= dt
+      if (this.rcsPuffCooldown <= 0) {
+        this.rcsPuffCooldown = RCS_PUFF_INTERVAL
+        const side = Math.random() < 0.5 ? 1 : -1
+        const px = this.x + Math.cos(rad + Math.PI / 2) * RCS_FLANK_OFFSET * side
+        const py = this.y + Math.sin(rad + Math.PI / 2) * RCS_FLANK_OFFSET * side
+        this.rcsEmitter.explode(Phaser.Math.Between(1, 3), px, py)
+      }
+    } else {
+      this.rcsPuffCooldown = 0
+    }
   }
 
   drawSlotIndicators(): void {

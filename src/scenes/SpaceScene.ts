@@ -25,6 +25,7 @@ import { Planet, generatePlanetTexture } from '../entities/Planet'
 import {
   Ship,
   generateShipTexture,
+  generateParticleTexture,
   DRAG_ORDER_THRESHOLD,
   CARGO_CAPACITY_TIERS,
   CARGO_UPGRADE_COSTS,
@@ -197,6 +198,7 @@ export class SpaceScene extends Phaser.Scene {
     this.buildStarLayers()
     this.generateAsteroidTextures()
     generateShipTexture(this)
+    generateParticleTexture(this)
     generateBaseTexture(this)
     generatePlanetTexture(this)
     generateAutoMinerTexture(this)
@@ -2844,6 +2846,7 @@ export class SpaceScene extends Phaser.Scene {
       }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
       ship.updateSteering(dt)
+      ship.updateThrusters(dt)
       // Drive attach-maneuver progress onto the reserved miner slot (per-slot fill).
       const maneuverStart = this.shipAttachManeuver.get(ship.id)
       if (maneuverStart !== undefined) {
