@@ -50,6 +50,14 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Exports: `shipHasFreeMediumSlot(ship)`, `selectDispatchTarget(ships, target)`, `selectHaulerForDesignation(ships, hasStoredMiner, isMinerEmpty?)`, `selectDeployTarget(asteroids, ship, occupiedIds)` (the last is retained/tested but no longer called by the scene since deployment became designation-driven)
   - No Phaser dependency — uses structural interfaces `SlottedShip` and `LocatedAsteroid`; tested independently via Vitest
 
+- **simLogic** `/src/scenes/simLogic.ts`
+  - Pure, Phaser-free simulation *decisions* extracted from SpaceScene (single
+    source of truth, unit-tested in `simLogic.test.ts`)
+  - Exports: `designationsToRevert` (fulfilled→queued when an asteroid has no
+    miner), `chooseDock` (free owned dock else public overflow), `shouldRelease
+    WaitingHauler`, `planNetCollection` (collect up to free slots, orphan the rest)
+  - Takes plain data / predicate closures; the scene applies the returned decisions
+
 - **Asteroid** `/src/entities/Asteroid.ts`
   - Inputs: `AsteroidData` (from worldGenerator), per-frame orbital angle update from SpaceScene
   - Outputs: `selectedAsteroid` store (when selected); emits `'asteroid-selected'` event; `currentQuantity` consumed by AutoMiner
@@ -79,8 +87,19 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **Base** `/src/entities/Base.ts` — `Phaser.GameObjects.Image`
   - Inputs: `acceptCargo()`, `sellResource()`, `commissionShip()`, `storeAutoMiner()`, station purchases (owned docks/hangars/miner slots, pressurization) from SpaceScene
   - Outputs: `baseState` store via `pushToStore()` (storage, credits, fleet size, station miner count/slots, owned dock/hangar counts, pressurization, autoDesignate)
-  - Station: per-tier service slots (docks for fast transfer; hangar bays for slow upgrade/repair/storage), owned-vs-public ownership (owned = low slot indices, public charges per-use fees), and a station autominer inventory (`stationMinerIds`, cap `STATION_MINER_SLOT_CAP`)
-  - Constants: `BASE_STORAGE_CAPACITY`, `STARTING_CREDITS`, `SHIP_COMMISSION_COST` (and station purchase costs)
+  - **Orbits the planet**: `orbitalRadius`/`orbitalAngle` + `advanceOrbit(dt)`
+    (Keplerian, `BASE_ORBIT_K`) advanced each frame; `orbitalAngle` persisted. The
+    scene's `updateBaseAttachments()` moves the label, slot/hangar markers, docked/
+    serviced ships, and station-keeping idle ships with it.
+  - Station: **docks are effectively infinite** — a returning hauler always docks at
+    a free owned dock (no fee) else a public dock (fee, unlimited, stacked); a ship
+    carries `dockIsPublic` and `chargeDockFee(isPublic)` charges accordingly. Owned
+    docks (occupancy-tracked) and hangar bays (finite, slow: upgrade/repair/storage)
+    plus a station autominer inventory (`stationMinerIds`, cap
+    `STATION_MINER_SLOT_CAP`). Autominers are **bought into station storage**
+    (refused when full).
+  - Constants: `BASE_STORAGE_CAPACITY`, `STARTING_CREDITS`, `SHIP_COMMISSION_COST`,
+    `BASE_ORBIT_K` (and station purchase costs)
 
 - **Planet** `/src/entities/Planet.ts`
   - Visual-only; procedurally textured; at world origin; no game logic
@@ -146,12 +165,12 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **EntityPanel** `/src/ui/EntityPanel.svelte`
   - Reads: `selectedShip`, `selectedAsteroid`, `selectedAutoMiner`, `selectedCargoNet`, `designationQueue`
-  - Writes: `commandQueue` (resupplyMiner, respondToBeacon, purchaseMiner, collectNets, upgradeShip, designate/un-designate asteroid, collectNet, repairMiner, toggleMinerCharge)
+  - Writes: `commandQueue` (resupplyMiner, respondToBeacon, collectNets, upgradeShip, designate/un-designate asteroid, collectNet, repairMiner, toggleMinerCharge)
   - Displays: ship detail (state, cargo, attachment slots, fuel/RCS/battery meters), asteroid detail (+ designate / "being mined"), miner detail (condition/battery/RCS), net detail (+ "designate for collection" when orphaned)
 
 - **BasePanel** `/src/ui/BasePanel.svelte`
   - Reads: `baseState`, `basePanelOpen`, `selectedShip`, `stationUsage`
-  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip, purchase owned dock/hangar/miner-slot/pressurization)
+  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip, purchaseMiner into Base storage, purchase owned dock/hangar/miner-slot/pressurization)
   - Displays: market, ship commission, cargo upgrades, station purchases, and a Station Usage section (miner storage; dock/hangar in-use with public-fee notes)
 
 ---
@@ -300,15 +319,23 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   degrade it along a bounded penalty curve (attach-fail + mining-rate, capped),
   and below a low threshold an attach may catastrophically destroy the miner.
   Repair is a timed hangar-bay service.
-- **Station services**: docks (fast transfer — drop-off, refuel/recharge) and
-  hangar bays (slow — upgrade, repair, miner storage), each public (per-use fee)
-  or owned (purchased, fee-free); owned slots are the low indices. `stationUsage`
-  surfaces utilization.
+- **Station services**: **docks are effectively infinite** — free owned docks
+  (occupancy-tracked) preferred, else unlimited public docks (per-use fee, stacked
+  on one ring position); `dockIsPublic` drives the fee. Hangar bays (few, slow —
+  upgrade, repair, miner storage) remain finite, public or owned. `stationUsage`
+  surfaces owned-docks-used/total and public docks in use.
+- **Base orbit**: the base orbits the planet; all base-relative geometry (slots,
+  hangars, docked ships, idle station-keeping ships, free-orbit fallbacks,
+  proximity, minimap) derives from the live base position each frame.
 - **Fuel & power**: haulers hold thruster fuel (transit, trickle-charges battery),
   RCS gas (maneuvering, incl. the attach maneuver), and a small battery;
   autominers hold a large battery (mining/beaconing drain) and an RCS tank
   (attaching). Recharge is the priced electricity sink; parked fleet draws nothing
   (idle-cost guarantee).
+- **Dev tooling** (F9, default on in development): a per-tick **invariant sweep**
+  (`checkInvariants`, end of autoDispatch) logs structural violations at their
+  origin, and a **debug overlay** (`updateDebugOverlay`) draws per-entity state
+  labels. The bug-prone decisions are also unit-tested via `simLogic`.
 
 ---
 
@@ -316,6 +343,11 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - `Planet.ts` not traced — visual only; no inputs or outputs to document
 - Minimap rendering (`drawMinimap()`) is fully internal to SpaceScene — no external interface
-- `rng.ts` test file at `/src/world/rng.test.ts` covers seeded RNG; `dispatchLogic.test.ts` at `/src/scenes/dispatchLogic.test.ts` covers dispatch pure functions — no other test coverage
-- Station/base orbiting is not yet implemented (WI-458 pending); `Base` is stationary at fixed `BASE_X/BASE_Y`
+- Tests (`make test`, 50): `rng.test.ts` (seeded RNG), `dispatchLogic.test.ts`
+  (dispatch pure functions), `simLogic.test.ts` (designation reconcile, dock
+  choice, waiting-release, net collection split). Scene-bound behavior is verified
+  manually + by the in-game invariant sweep.
+- The base now orbits the planet (WI-458); `BASE_X/BASE_Y` is only the initial
+  orbit point. A full end-to-end headless simulation test remains a future option
+  (the pure `simLogic` decisions are the foundation).
 - The `#5`/`#8` slot-overrun reports are believed closed by the reservation model (WI-467/468); no deterministic repro was captured
