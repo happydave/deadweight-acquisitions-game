@@ -1526,7 +1526,7 @@ export class SpaceScene extends Phaser.Scene {
     } else if (cmd.type === 'respondToBeacon') {
       this.initiateRespondToBeacon(cmd.minerId)
     } else if (cmd.type === 'purchaseMiner') {
-      this.performPurchaseMiner(cmd.haulerId)
+      this.performPurchaseMiner()
     } else if (cmd.type === 'collectNets') {
       this.initiateCollectNets(cmd.haulerId, cmd.asteroidId)
     } else if (cmd.type === 'purchaseMinerSlot') {
@@ -2112,22 +2112,18 @@ export class SpaceScene extends Phaser.Scene {
     this.attachShipEvents(ship)
   }
 
-  private performPurchaseMiner(haulerId: string): void {
-    const ship = this.ships.find(s => s.id === haulerId)
-    if (!ship) return
-    const slot = ship.attachmentPoints.find(ap => ap.size === 'medium' && ap.payload === null)
-    if (!slot) return
+  private performPurchaseMiner(): void {
+    // Buy a miner into Base station storage; refuse if storage is full.
+    if (this.base.stationMinerIds.length >= this.base.stationMinerSlotCount) return
     if (!this.base.purchaseMiner()) return
 
     const miner = new AutoMiner(this)
-    miner.setPosition(ship.x, ship.y)
+    miner.state = 'station-stored'
+    miner.setVisible(false)
     this.autoMiners.push(miner)
     this.autoMinerMap.set(miner.id, miner)
     this.attachMinerEvents(miner)
-
-    const idx = ship.attachmentPoints.indexOf(slot)
-    ship.attachmentPoints[idx] = { ...slot, payload: { kind: 'auto-miner', minerId: miner.id } }
-    ship.pushToStore()
+    this.base.storeAutoMiner(miner.id)
   }
 
   private initiateShipUpgrade(shipId: string, stat: 'cargo'): void {

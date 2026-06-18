@@ -57,9 +57,11 @@
   }
 
   function purchaseMiner(): void {
-    if (!$selectedShip) return
-    commandQueue.update(q => [...q, { type: 'purchaseMiner', haulerId: $selectedShip!.id }])
+    commandQueue.update(q => [...q, { type: 'purchaseMiner' }])
   }
+
+  $: hasMinerStorage = $baseState.stationMinerCount < $baseState.stationMinerSlotCount
+  $: canBuyMiner = $baseState.credits >= AUTOMINER_PURCHASE_COST && hasMinerStorage
 
   function purchaseOwnedDock(): void {
     commandQueue.update(q => [...q, { type: 'purchaseOwnedDock' }])
@@ -129,24 +131,17 @@
 
     <!-- Equipment -->
     <div class="section-title">EQUIPMENT</div>
-    {#if $selectedShip}
-      {@const hasFreeSlot = $selectedShip.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload === null)}
-      {@const canBuyMiner = $baseState.credits >= AUTOMINER_PURCHASE_COST && hasFreeSlot}
-      <div class="row shipyard-row" class:disabled={!canBuyMiner}>
-        <span class="label">AutoMiner</span>
-        <span class="price">{AUTOMINER_PURCHASE_COST}cr</span>
-        <button
-          class="commission-btn"
-          disabled={!canBuyMiner}
-          on:click={purchaseMiner}
-        >Buy</button>
-      </div>
-    {:else}
-      <div class="row shipyard-row disabled">
-        <span class="label">AutoMiner</span>
-        <span class="price">{AUTOMINER_PURCHASE_COST}cr</span>
-        <button class="commission-btn" disabled>Buy</button>
-      </div>
+    <div class="row shipyard-row" class:disabled={!canBuyMiner}>
+      <span class="label">AutoMiner</span>
+      <span class="price">{AUTOMINER_PURCHASE_COST}cr</span>
+      <button
+        class="commission-btn"
+        disabled={!canBuyMiner}
+        on:click={purchaseMiner}
+      >Buy</button>
+    </div>
+    {#if !hasMinerStorage}
+      <div class="row"><span class="fee-note">No free miner storage — buy a Miner Slot below</span></div>
     {/if}
 
     <!-- Station usage -->

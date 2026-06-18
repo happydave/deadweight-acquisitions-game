@@ -8,7 +8,7 @@ export type GameCommand =
   | { type: 'upgradeShip'; shipId: string; stat: 'cargo' }
   | { type: 'resupplyMiner'; minerId: string }
   | { type: 'respondToBeacon'; minerId: string }
-  | { type: 'purchaseMiner'; haulerId: string }
+  | { type: 'purchaseMiner' }
   | { type: 'collectNets'; haulerId: string; asteroidId: string }
   | { type: 'purchaseMinerSlot' }
   | { type: 'purchaseOwnedDock' }
