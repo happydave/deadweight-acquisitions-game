@@ -750,6 +750,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private lastStationUsageKey = ''
+  private debugMode = false // F9 toggles dev invariant checks (and future overlay)
 
   // Docks are effectively infinite: a returning hauler always docks — at a free
   // owned dock (no fee) if available, otherwise a public dock (fee, unlimited,
@@ -1206,6 +1207,78 @@ export class SpaceScene extends Phaser.Scene {
     // (Removed the unconditional "deploy carried miners to nearest asteroid" loop:
     // deployment is now designation-driven only, and idle carriers recharge/store
     // their miners at base via the loop at the top of this method.)
+
+    if (this.debugMode) this.checkInvariants()
+  }
+
+  /**
+   * Dev-only: assert the simulation's structural invariants and log any violation
+   * at its origin. Runs at the end of autoDispatch (a stable checkpoint, after the
+   * loop's own fixups) when debug mode (F9) is on. Detects, never throws/fixes.
+   */
+  private checkInvariants(): void {
+    const warn = (msg: string) => {
+      console.warn(`[invariant] ${msg}`)
+      this.pushAttachNotification(`Invariant: ${msg}`, true)
+    }
+
+    // 1 & 2: no miner / net id referenced by more than one slot.
+    const minerSlotCount = new Map<string, number>()
+    const netSlotCount = new Map<string, number>()
+    for (const ship of this.ships) {
+      for (const ap of ship.attachmentPoints) {
+        const p = ap.payload
+        if (p?.kind === 'auto-miner') minerSlotCount.set(p.minerId, (minerSlotCount.get(p.minerId) ?? 0) + 1)
+        else if (p?.kind === 'cargo-net') netSlotCount.set(p.netId, (netSlotCount.get(p.netId) ?? 0) + 1)
+        // 3: reserved slot references an existing target.
+        else if (p?.kind === 'reserved') {
+          const exists = p.forKind === 'auto-miner' ? this.autoMinerMap.has(p.targetId) : this.cargoNetMap.has(p.targetId)
+          if (!exists) warn(`reserved slot on ${ship.id} targets missing ${p.forKind} ${p.targetId}`)
+        }
+      }
+    }
+    for (const [id, n] of minerSlotCount) if (n > 1) warn(`miner ${id} referenced by ${n} slots`)
+    for (const [id, n] of netSlotCount) if (n > 1) warn(`net ${id} referenced by ${n} slots`)
+
+    // 4: each fulfilled designation has a miner attached to its asteroid.
+    for (const d of this.designations) {
+      if (d.status !== 'fulfilled') continue
+      if (!this.autoMiners.some(m => m.asteroidId === d.asteroidId)) {
+        warn(`fulfilled designation for ${d.asteroidId} has no attached miner`)
+      }
+    }
+
+    // 5: no idle ship retains an asteroidTarget.
+    for (const ship of this.ships) {
+      if (ship.shipState === 'idle' && ship.asteroidTarget !== null) {
+        warn(`idle ship ${ship.id} retains asteroidTarget ${ship.asteroidTarget.id}`)
+      }
+    }
+
+    // 6: storage within capacity.
+    if (this.base.totalStored() > this.base.storageCapacity) {
+      warn(`storage ${Math.floor(this.base.totalStored())} exceeds capacity ${this.base.storageCapacity}`)
+    }
+
+    // 7: owned-dock occupancy consistent with ships.
+    for (let i = 0; i < this.slotOccupants.length; i++) {
+      const occ = this.slotOccupants[i]
+      if (occ === null) continue
+      const ship = this.ships.find(s => s.id === occ)
+      if (!ship || ship.dockSlotIndex !== i || ship.dockIsPublic) {
+        warn(`owned dock ${i} occupant ${occ} inconsistent (dockSlotIndex/public mismatch)`)
+      }
+    }
+
+    // 8: active beacons reference existing miners (no stale beacon for a
+    // destroyed/recovered miner). State is not asserted — low-battery miners beacon
+    // while still 'mining', so a precise state check would false-positive.
+    for (const b of get(activeBeacons)) {
+      const m = this.autoMinerMap.get(b.id)
+      if (!m || m.state === 'in-transit' || m.state === 'station-stored') {
+        warn(`activeBeacon ${b.id} references a non-beaconing/absent miner`)
+      }
+    }
   }
 
   private dispatchToAsteroid(asteroid: Asteroid): void {
@@ -2333,6 +2406,12 @@ export class SpaceScene extends Phaser.Scene {
 
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F).on('down', () => {
       this.toggleFollowCam()
+    })
+
+    keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F9).on('down', () => {
+      this.debugMode = !this.debugMode
+      this.pushAttachNotification(`Debug mode ${this.debugMode ? 'ON' : 'OFF'}`, false)
+      if (this.debugMode) this.checkInvariants()
     })
 
     this.input.on(
