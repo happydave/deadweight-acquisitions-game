@@ -27,7 +27,7 @@ export const baseState = writable<BaseState>({
   autoDesignate: false,
 })
 
-export const basePanelOpen = writable<boolean>(false)
+export const basePanelOpen = writable<boolean>(true) // pinned open by default; closed only via the panel's X
 
 export interface StationUsage {
   minersStored: number

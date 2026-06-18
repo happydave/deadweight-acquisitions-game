@@ -750,7 +750,7 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private lastStationUsageKey = ''
-  private debugMode = false // F9 toggles dev invariant checks (and future overlay)
+  private debugMode = true // F9 toggles dev invariant checks (and future overlay)
 
   // Docks are effectively infinite: a returning hauler always docks — at a free
   // owned dock (no fee) if available, otherwise a public dock (fee, unlimited,
@@ -2401,7 +2401,7 @@ export class SpaceScene extends Phaser.Scene {
 
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC).on('down', () => {
       this.clearSelection()
-      basePanelOpen.set(false)
+      // Base panel stays pinned open; it is closed only via its X button.
     })
 
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F).on('down', () => {
@@ -2480,7 +2480,7 @@ export class SpaceScene extends Phaser.Scene {
                     }
                   } else {
                     this.clearSelection()
-                    basePanelOpen.set(false)
+                    // Base panel stays pinned open; closed only via its X button.
                   }
                 }
               }
