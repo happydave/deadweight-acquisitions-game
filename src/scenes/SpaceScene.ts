@@ -750,7 +750,8 @@ export class SpaceScene extends Phaser.Scene {
   }
 
   private lastStationUsageKey = ''
-  private debugMode = true // F9 toggles dev invariant checks (and future overlay)
+  private debugMode = true // F9 toggles dev invariant checks + entity overlay
+  private debugLabels: Map<string, Phaser.GameObjects.Text> = new Map() // per-entity debug text
 
   // Docks are effectively infinite: a returning hauler always docks — at a free
   // owned dock (no fee) if available, otherwise a public dock (fee, unlimited,
@@ -1277,6 +1278,65 @@ export class SpaceScene extends Phaser.Scene {
       const m = this.autoMinerMap.get(b.id)
       if (!m || m.state === 'in-transit' || m.state === 'station-stored') {
         warn(`activeBeacon ${b.id} references a non-beaconing/absent miner`)
+      }
+    }
+  }
+
+  /** Dev-only: per-entity state labels near each entity while debug mode is on. */
+  private updateDebugOverlay(): void {
+    if (!this.debugMode) {
+      if (this.debugLabels.size > 0) {
+        for (const t of this.debugLabels.values()) t.destroy()
+        this.debugLabels.clear()
+      }
+      return
+    }
+
+    const seen = new Set<string>()
+    const label = (key: string, x: number, y: number, text: string, color: string) => {
+      seen.add(key)
+      let t = this.debugLabels.get(key)
+      if (!t) {
+        t = this.add.text(0, 0, '', { fontSize: '9px', fontFamily: 'monospace', color })
+          .setDepth(50).setOrigin(0.5, 1)
+        this.debugLabels.set(key, t)
+      }
+      if (t.text !== text) t.setText(text)
+      t.setPosition(x, y)
+      t.setVisible(true)
+    }
+
+    for (const ship of this.ships) {
+      const dock = ship.dockSlotIndex !== null ? ` d${ship.dockSlotIndex}${ship.dockIsPublic ? 'P' : ''}` : ''
+      const hangar = ship.hangarSlotIndex !== null ? ` h${ship.hangarSlotIndex}` : ''
+      label(`s:${ship.id}`, ship.x, ship.y - 16,
+        `${ship.shipState}${dock}${hangar}\nf${Math.round(ship.thrusterFuel)} r${Math.round(ship.rcsFuel)} b${Math.round(ship.battery)}`,
+        '#88ddff')
+    }
+    for (const miner of this.autoMiners) {
+      if (!miner.visible) continue
+      const br = miner.beaconReason ? ` ${miner.beaconReason}` : ''
+      label(`m:${miner.id}`, miner.x, miner.y - 10,
+        `${miner.state} c${Math.round(miner.condition * 100)} b${Math.round(miner.battery)}${br}`,
+        '#aaddee')
+    }
+    for (const net of this.cargoNets) {
+      if (!net.visible) continue
+      const tag = net.freeOrbitalRadius !== null
+        ? (net.designatedForCollection ? 'untethered·desig' : 'untethered')
+        : net.state
+      label(`n:${net.id}`, net.x, net.y - 8, `${tag} ${Math.floor(net.quantity)}`, '#ffcc66')
+    }
+    for (const d of this.designations) {
+      const ast = this.asteroidMap.get(d.asteroidId)
+      if (!ast) continue
+      label(`d:${d.asteroidId}`, ast.x, ast.y - 14, `[${d.status}]`, '#88ffaa')
+    }
+
+    for (const [key, t] of this.debugLabels) {
+      if (!seen.has(key)) {
+        t.destroy()
+        this.debugLabels.delete(key)
       }
     }
   }
@@ -2860,5 +2920,6 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     this.drawMinimap()
+    this.updateDebugOverlay()
   }
 }
