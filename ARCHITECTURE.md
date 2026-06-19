@@ -291,7 +291,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 ### Save / load cycle
 ```
 1. SpaceScene.update(): autoSaveAccumulator += dt; when >= 10s → GameSaveService.save(buildSaveState())
-2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=11)
+2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=21)
 3. GameSaveService.save(): JSON.stringify(SaveState) → localStorage['dwa-save']
 4. On load: GameSaveService.load() → JSON.parse → migrate() fallthrough switch upgrades schema → return SaveState
 5. SpaceScene.loadFromSave(): re-creates all entity instances from snapshot data; restores timers and states
