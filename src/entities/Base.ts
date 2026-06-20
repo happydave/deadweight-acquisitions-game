@@ -9,6 +9,8 @@ import { HANGAR_BAY_COUNT } from '../world/hangarBays'
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
+// Each silo-expansion purchase raises the total-tonnage cap by this much.
+export const SILO_CAPACITY_INCREMENT = 1000
 export const STARTING_CREDITS = 750
 export const SHIP_COMMISSION_COST = 500
 // Keplerian constant for the base's orbit around the planet. Matches the world
@@ -33,7 +35,7 @@ export function generateBaseTexture(scene: Phaser.Scene): void {
 }
 
 export class Base extends Phaser.GameObjects.Image {
-  readonly storageCapacity: number
+  storageCapacity: number
   storage: Partial<Record<ResourceType, number>>
   credits: number
   readonly ships: string[]
@@ -82,9 +84,13 @@ export class Base extends Phaser.GameObjects.Image {
     return Object.values(this.storage).reduce((sum, n) => sum + (n ?? 0), 0)
   }
 
-  canAcceptCargo(cargo: Partial<Record<ResourceType, number>>): boolean {
-    const incoming = Object.values(cargo).reduce((sum, n) => sum + (n ?? 0), 0)
-    return this.totalStored() + incoming <= this.storageCapacity
+  /**
+   * Silo is full once stored tonnage reaches capacity. Full does not block an
+   * in-flight unload (the silo soft-caps and may transiently exceed capacity);
+   * it halts new acquisition (auto-designate) upstream instead.
+   */
+  isSiloFull(): boolean {
+    return this.totalStored() >= this.storageCapacity
   }
 
   acceptCargo(cargo: Partial<Record<ResourceType, number>>): void {
@@ -183,6 +189,14 @@ export class Base extends Phaser.GameObjects.Image {
   purchaseMiner(): boolean {
     if (this.credits < AUTOMINER_PURCHASE_COST) return false
     this.credits -= AUTOMINER_PURCHASE_COST
+    this.pushToStore()
+    return true
+  }
+
+  purchaseSiloCapacity(): boolean {
+    if (this.credits < getPrice('silo-capacity-upgrade')) return false
+    this.credits -= getPrice('silo-capacity-upgrade')
+    this.storageCapacity += SILO_CAPACITY_INCREMENT
     this.pushToStore()
     return true
   }

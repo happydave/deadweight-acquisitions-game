@@ -3,7 +3,7 @@
   import { commandQueue } from '../state/commandStore'
   import { selectedShip } from '../state/shipStore'
   import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
-  import { SHIP_COMMISSION_COST } from '../entities/Base'
+  import { SHIP_COMMISSION_COST, SILO_CAPACITY_INCREMENT } from '../entities/Base'
   import { AUTOMINER_PURCHASE_COST, STATION_MINER_SLOT_CAP } from '../entities/AutoMiner'
   import {
     MAX_UPGRADE_LEVEL,
@@ -18,6 +18,7 @@
   const HANGAR_COST  = getPrice('owned-hangar-purchase')
   const PRESS_COST   = getPrice('pressurization-upgrade')
   const SLOT_COST    = getPrice('station-miner-slot')
+  const SILO_COST    = getPrice('silo-capacity-upgrade')
 
   const FEE_CARGO_DROP  = getPrice('dock-cargo-drop')
   const FEE_HANGAR      = getPrice('hangar-service')
@@ -82,6 +83,13 @@
   function toggleAutoDesignate(): void {
     commandQueue.update(q => [...q, { type: 'toggleAutoDesignate' }])
   }
+
+  function purchaseSiloCapacity(): void {
+    commandQueue.update(q => [...q, { type: 'purchaseSiloCapacity' }])
+  }
+
+  $: siloFull = totalStored($baseState.storage) >= $baseState.storageCapacity
+  $: canExpandSilo = $baseState.credits >= SILO_COST
 </script>
 
 {#if $basePanelOpen}
@@ -95,9 +103,24 @@
       <span class="label">Credits</span>
       <span class="value credits">{Math.floor($baseState.credits)}</span>
     </div>
-    <div class="row">
+    <div class="row" class:silo-full={siloFull}>
       <span class="label">Storage</span>
-      <span class="value">{Math.floor(totalStored($baseState.storage))} / {$baseState.storageCapacity}</span>
+      <span class="value">
+        {Math.floor(totalStored($baseState.storage))} / {$baseState.storageCapacity}
+        {#if siloFull}<span class="silo-full-tag">FULL</span>{/if}
+      </span>
+    </div>
+    {#if siloFull}
+      <div class="silo-warning">Silo full — mining halted. Sell or expand.</div>
+    {/if}
+    <div class="row shipyard-row" class:disabled={!canExpandSilo}>
+      <span class="label">Expand Silo</span>
+      <span class="price">+{SILO_CAPACITY_INCREMENT}t · {SILO_COST}cr</span>
+      <button
+        class="commission-btn"
+        disabled={!canExpandSilo}
+        on:click={purchaseSiloCapacity}
+      >Buy</button>
     </div>
 
     <!-- Market -->
@@ -334,6 +357,24 @@
   .fee-note {
     color: #ffaa66;
     font-size: 0.85em;
+  }
+
+  .silo-full .value {
+    color: #ff6655;
+  }
+
+  .silo-full-tag {
+    color: #ff6655;
+    font-weight: bold;
+    margin-left: 4px;
+  }
+
+  .silo-warning {
+    color: #ff6655;
+    font-size: 0.85em;
+    border-left: 2px solid #ff6655;
+    padding-left: 4px;
+    margin: 2px 0;
   }
 
   .credits {

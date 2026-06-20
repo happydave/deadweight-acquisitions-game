@@ -416,7 +416,9 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       this.progressBarGfx.fillRect(barX, barY, UNLOAD_BAR_WIDTH * fill, UNLOAD_BAR_HEIGHT)
     }
 
-    if (!this.base.canAcceptCargo(this.cargoContents)) return
+    // Silo soft-caps: in-flight cargo always unloads (never stranded), even if it
+    // pushes the silo transiently over capacity. Back-pressure is applied upstream
+    // by halting new acquisition (auto-designate) once the silo is full.
 
     // Advance attachment timer — one item drains per ATTACHMENT_UNLOAD_DURATION.
     // The scene drains an item on each tick and re-arms via armNextAttachUnload.

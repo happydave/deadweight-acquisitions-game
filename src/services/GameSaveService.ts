@@ -1,6 +1,7 @@
 import type { SaveState } from '../state/gameState'
 import { makeDefaultLoadout } from '../state/attachmentTypes'
 import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities/Ship'
+import { BASE_STORAGE_CAPACITY } from '../entities/Base'
 import { MINER_BATTERY_MAX, MINER_RCS_MAX } from '../entities/AutoMiner'
 
 const SAVE_KEY = 'dwa-save'
@@ -274,6 +275,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 21:
+      // v21 → v22: persist storageCapacity on base (was reconstructed from constant)
+      raw = {
+        ...raw,
+        schemaVersion: 22,
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          storageCapacity: (raw.base as { storageCapacity?: number }).storageCapacity ?? BASE_STORAGE_CAPACITY,
+        },
+      } as unknown as SaveState
+      // falls through
+    case 22:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

@@ -98,8 +98,13 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
     plus a station autominer inventory (`stationMinerIds`, cap
     `STATION_MINER_SLOT_CAP`). Autominers are **bought into station storage**
     (refused when full).
-  - Constants: `BASE_STORAGE_CAPACITY`, `STARTING_CREDITS`, `SHIP_COMMISSION_COST`,
-    `BASE_ORBIT_K` (and station purchase costs)
+  - Resource silo: `storage` (per-resource) bounded by mutable `storageCapacity`,
+    raised by `purchaseSiloCapacity()` (+`SILO_CAPACITY_INCREMENT`). The silo
+    **soft-caps**: `acceptCargo()` always accepts an in-flight unload (may push
+    transiently over capacity); `isSiloFull()` instead halts new acquisition
+    (auto-designate) upstream. Selling stays explicit per-resource (`sellResource`).
+  - Constants: `BASE_STORAGE_CAPACITY`, `SILO_CAPACITY_INCREMENT`, `STARTING_CREDITS`,
+    `SHIP_COMMISSION_COST`, `BASE_ORBIT_K` (and station purchase costs)
 
 - **Planet** `/src/entities/Planet.ts`
   - Visual-only; procedurally textured; at world origin; no game logic
@@ -107,8 +112,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **GameSaveService** `/src/services/GameSaveService.ts`
   - Inputs: `SaveState` plain objects; localStorage
   - Outputs: `SaveState | null` from `load()`; persists to localStorage on `save()`
-  - Schema version: 21 (current); `migrate()` uses a fallthrough switch from v1→v21; each case upgrades one concern and falls through
-  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
+  - Schema version: 22 (current); `migrate()` uses a fallthrough switch from v1→v22; each case upgrades one concern and falls through
+  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity` (was reconstructed from the constant). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
 
 - **gameState** `/src/state/gameState.ts`
   - Type definitions only: `SaveState`, `ShipSnapshot`, `AutoMinerSnapshot`, `CargoNetSnapshot`, `AsteroidSnapshot`, `BaseSnapshot`
@@ -170,7 +175,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **BasePanel** `/src/ui/BasePanel.svelte`
   - Reads: `baseState`, `basePanelOpen`, `selectedShip`, `stationUsage`
-  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip, purchaseMiner into Base storage, purchase owned dock/hangar/miner-slot/pressurization)
+  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip, purchaseMiner into Base storage, purchase owned dock/hangar/miner-slot/pressurization/silo-capacity)
   - Displays: market, ship commission, cargo upgrades, station purchases, and a Station Usage section (miner storage; dock/hangar in-use with public-fee notes)
 
 ---
@@ -291,7 +296,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 ### Save / load cycle
 ```
 1. SpaceScene.update(): autoSaveAccumulator += dt; when >= 10s → GameSaveService.save(buildSaveState())
-2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=21)
+2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=22)
 3. GameSaveService.save(): JSON.stringify(SaveState) → localStorage['dwa-save']
 4. On load: GameSaveService.load() → JSON.parse → migrate() fallthrough switch upgrades schema → return SaveState
 5. SpaceScene.loadFromSave(): re-creates all entity instances from snapshot data; restores timers and states

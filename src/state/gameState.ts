@@ -73,6 +73,7 @@ export interface ShipSnapshot {
 
 export interface BaseSnapshot {
   storage: Partial<Record<ResourceType, number>>
+  storageCapacity: number
   credits: number
   ownedDockCount: number
   ownedHangarCount: number
@@ -102,11 +103,14 @@ export interface SaveState {
   designations: MiningDesignationSnapshot[]
 }
 
+// Template defaults for a fresh state. `storageCapacity` mirrors
+// BASE_STORAGE_CAPACITY in entities/Base.ts (kept as a literal to avoid pulling
+// Phaser into this widely-imported state module); keep the two in sync.
 export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
+  base: { storage: {}, storageCapacity: 2000, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
   asteroids: [],
   ships: [],
   autoMiners: [],

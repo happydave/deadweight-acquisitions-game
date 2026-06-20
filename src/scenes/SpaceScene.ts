@@ -20,7 +20,7 @@ import {
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
-import { Base, generateBaseTexture } from '../entities/Base'
+import { Base, generateBaseTexture, BASE_STORAGE_CAPACITY } from '../entities/Base'
 import { Planet, generatePlanetTexture } from '../entities/Planet'
 import {
   Ship,
@@ -252,6 +252,7 @@ export class SpaceScene extends Phaser.Scene {
     // Restore base
     this.base = new Base(this, BASE_X, BASE_Y)
     this.base.storage = { ...save.base.storage }
+    this.base.storageCapacity = save.base.storageCapacity ?? BASE_STORAGE_CAPACITY
     this.base.credits = save.base.credits
     this.base.ownedDockCount = save.base.ownedDockCount ?? 0
     this.base.ownedHangarCount = save.base.ownedHangarCount ?? 0
@@ -512,11 +513,12 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 21,
+      schemaVersion: 22,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
         storage: { ...this.base.storage },
+        storageCapacity: this.base.storageCapacity,
         credits: this.base.credits,
         ownedDockCount: this.base.ownedDockCount,
         ownedHangarCount: this.base.ownedHangarCount,
@@ -1005,11 +1007,9 @@ export class SpaceScene extends Phaser.Scene {
     const netAp = ship.attachmentPoints.find(a => a.payload?.kind === 'cargo-net')
     if (netAp && netAp.payload?.kind === 'cargo-net') {
       const net = this.cargoNetMap.get(netAp.payload.netId)
-      if (net && !this.base.canAcceptCargo({ [net.resourceType]: net.quantity })) {
-        // Storage can't hold this net yet — hold it and retry next tick (never
-        // overfill, never lose the cargo) rather than dropping it in place.
-        return
-      }
+      // Silo soft-caps: always accept a delivered net (cargo already mined is never
+      // stranded), even if it pushes the silo transiently over capacity. Acquisition
+      // is halted upstream (auto-designate) when the silo is full.
       if (net) {
         this.base.acceptCargo({ [net.resourceType]: net.quantity })
         this.cargoNetMap.delete(net.id)
@@ -1260,10 +1260,10 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    // 6: storage within capacity.
-    if (this.base.totalStored() > this.base.storageCapacity) {
-      warn(`storage ${Math.floor(this.base.totalStored())} exceeds capacity ${this.base.storageCapacity}`)
-    }
+    // 6: (removed) "storage within capacity" is no longer an invariant — the silo
+    // soft-caps, so an in-flight unload legally pushes it transiently over capacity.
+    // Back-pressure (halting auto-designate while full) is enforced at the
+    // designation call site rather than checked as a standing state here.
 
     // 7: owned-dock occupancy consistent with ships.
     for (let i = 0; i < this.slotOccupants.length; i++) {
@@ -1526,7 +1526,9 @@ export class SpaceScene extends Phaser.Scene {
     const asteroid = new Asteroid(this, data)
     this.asteroids.push(asteroid)
     this.asteroidMap.set(asteroid.id, asteroid)
-    if (this.base.autoDesignate) {
+    // Back-pressure: a full silo halts new acquisition so an unattended fleet
+    // converges and idles rather than mining into a silo it cannot unload into.
+    if (this.base.autoDesignate && !this.base.isSiloFull()) {
       this.addDesignation(asteroid.id)
     }
   }
@@ -1601,6 +1603,8 @@ export class SpaceScene extends Phaser.Scene {
       this.base.purchaseHangar()
     } else if (cmd.type === 'purchasePressurization') {
       this.base.purchasePressurization()
+    } else if (cmd.type === 'purchaseSiloCapacity') {
+      this.base.purchaseSiloCapacity()
     } else if (cmd.type === 'designateAsteroid') {
       this.addDesignation(cmd.asteroidId)
     } else if (cmd.type === 'undesignateAsteroid') {

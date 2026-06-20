@@ -21,14 +21,19 @@
     if (saveTimer !== null) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => { saveLabel = 'Save' }, 1000)
   }
+
+  $: siloFull = totalStored($baseState.storage) >= $baseState.storageCapacity
 </script>
 
 <div class="hud">
   <div class="hud-label">Deadweight Acquisitions</div>
-  <div class="hud-row">
+  <div class="hud-row" class:silo-full={siloFull}>
     <span class="hud-key">Storage</span>
     <span class="hud-val">{Math.floor(totalStored($baseState.storage))} / {$baseState.storageCapacity}</span>
   </div>
+  {#if siloFull}
+    <div class="hud-row silo-warning">⚠ Silo full — mining halted</div>
+  {/if}
   {#each storageEntries($baseState.storage) as [type, qty]}
     <div class="hud-row hud-indent">
       <span class="hud-key resource-{type}">{type}</span>
@@ -207,6 +212,17 @@
   .dispatch-btn:hover {
     color: #ffcc88;
     border-color: #ffaa44;
+  }
+
+  .silo-full .hud-val {
+    color: #ff6655;
+  }
+
+  .silo-warning {
+    color: #ff6655;
+    font-size: 10px;
+    border-left: 2px solid #ff6655;
+    padding-left: 4px;
   }
 
   .miner-shortage {

@@ -14,6 +14,7 @@ export type GameCommand =
   | { type: 'purchaseOwnedDock' }
   | { type: 'purchaseHangar' }
   | { type: 'purchasePressurization' }
+  | { type: 'purchaseSiloCapacity' }
   | { type: 'designateAsteroid'; asteroidId: string }
   | { type: 'undesignateAsteroid'; asteroidId: string }
   | { type: 'collectNet'; netId: string }

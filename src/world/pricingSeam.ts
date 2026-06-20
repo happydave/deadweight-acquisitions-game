@@ -9,6 +9,7 @@ export type PriceKey =
   | 'owned-dock-purchase'
   | 'owned-hangar-purchase'
   | 'pressurization-upgrade'
+  | 'silo-capacity-upgrade'
 
 const PRICES: Record<PriceKey, number> = {
   'dock-refuel':                  20,
@@ -21,6 +22,7 @@ const PRICES: Record<PriceKey, number> = {
   'owned-dock-purchase':         100,
   'owned-hangar-purchase':       300,
   'pressurization-upgrade':      500,
+  'silo-capacity-upgrade':       300,
 }
 
 export function getPrice(key: PriceKey): number {
