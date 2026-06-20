@@ -1,6 +1,7 @@
 <script lang="ts">
   import { baseState, basePanelOpen, stationUsage } from '../state/baseStore'
   import { resourceMarket } from '../state/marketStore'
+  import { infrastructure, type LeverKey } from '../state/infrastructureStore'
   import { commandQueue } from '../state/commandStore'
   import { selectedShip } from '../state/shipStore'
   import { type ResourceType } from '../world/worldConfig'
@@ -89,6 +90,18 @@
     commandQueue.update(q => [...q, { type: 'purchaseSiloCapacity' }])
   }
 
+  const RESOURCE_LEVER: Partial<Record<ResourceType, LeverKey>> = {
+    silicates: 'solar', ice: 'propellant', iron: 'foundry',
+  }
+  const LEVER_ORDER: LeverKey[] = ['solar', 'propellant', 'foundry']
+  const LEVER_LABELS: Record<LeverKey, string> = {
+    solar: 'Solar → Power', propellant: 'Propellant → Fuel/RCS', foundry: 'Foundry → Repair',
+  }
+
+  function investInfrastructure(lever: LeverKey): void {
+    commandQueue.update(q => [...q, { type: 'investInfrastructure', lever }])
+  }
+
   $: siloFull = totalStored($baseState.storage) >= $baseState.storageCapacity
   $: canExpandSilo = $baseState.credits >= SILO_COST
 </script>
@@ -136,11 +149,31 @@
         <span class="price" class:depressed>
           @ {mkt.current.toFixed(1)}cr{#if depressed}<span class="base-ref"> /{mkt.baseline}</span>{/if}
         </span>
+        {#if RESOURCE_LEVER[type]}
+          <button
+            class="invest-btn"
+            disabled={qty <= 0}
+            title="Invest into {LEVER_LABELS[RESOURCE_LEVER[type]!]}"
+            on:click={() => investInfrastructure(RESOURCE_LEVER[type]!)}
+          >Invest</button>
+        {/if}
         <button
           class="sell-btn"
           disabled={qty <= 0}
           on:click={() => sellResource(type)}
         >Sell</button>
+      </div>
+    {/each}
+
+    <!-- Infrastructure (cost levers) -->
+    <div class="section-title">INFRASTRUCTURE</div>
+    {#each LEVER_ORDER as lever}
+      {@const inf = $infrastructure[lever]}
+      {@const reduced = inf.price < inf.base - 0.05}
+      <div class="row infra-row">
+        <span class="label">{LEVER_LABELS[lever]}</span>
+        <span class="infra-stat">cap {inf.capacity.toFixed(0)} · dem {inf.demand}</span>
+        <span class="price" class:depressed={reduced}>{inf.price.toFixed(1)}<span class="base-ref">/{inf.base}</span></span>
       </div>
     {/each}
 
@@ -417,7 +450,8 @@
   }
 
   .sell-btn,
-  .commission-btn {
+  .commission-btn,
+  .invest-btn {
     background: rgba(40, 80, 120, 0.6);
     border: 1px solid #2a5a8a;
     border-radius: 3px;
@@ -427,6 +461,21 @@
     cursor: pointer;
     padding: 2px 6px;
     white-space: nowrap;
+  }
+
+  .invest-btn {
+    background: rgba(40, 90, 60, 0.6);
+    border-color: #2a7a4a;
+    color: #aaeec0;
+    margin-right: 3px;
+  }
+
+  .infra-stat {
+    color: #7a8a99;
+    font-size: 0.85em;
+    flex: 1;
+    text-align: right;
+    padding-right: 6px;
   }
 
   .toggle-btn {
@@ -450,8 +499,13 @@
     background: rgba(60, 100, 150, 0.7);
   }
 
+  .invest-btn:hover:not(:disabled) {
+    background: rgba(60, 120, 85, 0.7);
+  }
+
   .sell-btn:disabled,
-  .commission-btn:disabled {
+  .commission-btn:disabled,
+  .invest-btn:disabled {
     opacity: 0.35;
     cursor: default;
   }

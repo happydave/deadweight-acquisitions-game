@@ -87,6 +87,9 @@ import {
 } from '../state/autoMinerStore'
 import { GameSaveService } from '../services/GameSaveService'
 import { getPrice } from '../world/pricingSeam'
+import { effectivePrice } from '../world/infrastructure'
+import { infrastructure } from '../state/infrastructureStore'
+import type { LeverKey } from '../entities/Base'
 
 const NOTIFICATION_DURATION_MS = 4000
 const WORLD_SIZE = 8500
@@ -258,6 +261,9 @@ export class SpaceScene extends Phaser.Scene {
       this.base.markets[type].pressure = save.base.marketPressure?.[type] ?? 0
     }
     this.base.pushMarketToStore()
+    this.base.solarCapacity = save.base.solarCapacity ?? 0
+    this.base.propellantCapacity = save.base.propellantCapacity ?? 0
+    this.base.foundryCapacity = save.base.foundryCapacity ?? 0
     this.base.credits = save.base.credits
     this.base.ownedDockCount = save.base.ownedDockCount ?? 0
     this.base.ownedHangarCount = save.base.ownedHangarCount ?? 0
@@ -518,7 +524,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 23,
+      schemaVersion: 24,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -530,6 +536,9 @@ export class SpaceScene extends Phaser.Scene {
           silicates:     this.base.markets.silicates.pressure,
           'rare-metals': this.base.markets['rare-metals'].pressure,
         },
+        solarCapacity: this.base.solarCapacity,
+        propellantCapacity: this.base.propellantCapacity,
+        foundryCapacity: this.base.foundryCapacity,
         credits: this.base.credits,
         ownedDockCount: this.base.ownedDockCount,
         ownedHangarCount: this.base.ownedHangarCount,
@@ -870,7 +879,7 @@ export class SpaceScene extends Phaser.Scene {
       this.base.chargeDockFee(ship.dockIsPublic)
       this.releaseDockSlot(ship)
       if (ship.thrusterFuel < HAULER_FUEL_MAX || ship.rcsFuel < HAULER_RCS_MAX) {
-        this.base.credits -= getPrice('dock-refuel')
+        this.base.credits -= this.effectiveRefuelPrice()
         this.base.pushToStore()
         ship.thrusterFuel = HAULER_FUEL_MAX
         ship.rcsFuel = HAULER_RCS_MAX
@@ -1616,6 +1625,8 @@ export class SpaceScene extends Phaser.Scene {
       this.base.purchasePressurization()
     } else if (cmd.type === 'purchaseSiloCapacity') {
       this.base.purchaseSiloCapacity()
+    } else if (cmd.type === 'investInfrastructure') {
+      this.base.investInfrastructure(cmd.lever)
     } else if (cmd.type === 'designateAsteroid') {
       this.addDesignation(cmd.asteroidId)
     } else if (cmd.type === 'undesignateAsteroid') {
@@ -2113,7 +2124,7 @@ export class SpaceScene extends Phaser.Scene {
     const miner = this.autoMinerMap.get(minerId)
     if (!miner || miner.state !== 'station-stored') return false
 
-    const cost = Math.round((1.0 - miner.condition) * 100) * getPrice('repair-per-condition-point')
+    const cost = Math.round((1.0 - miner.condition) * 100) * this.effectiveRepairPrice()
 
     const slotIndex = this.hangarOccupants.findIndex(occ => occ === null)
     if (slotIndex === -1) return false
@@ -2443,7 +2454,7 @@ export class SpaceScene extends Phaser.Scene {
   private rechargeMinerAtStation(miner: AutoMiner): void {
     if (miner.battery >= MINER_BATTERY_MAX) return
     const deficit = MINER_BATTERY_MAX - miner.battery
-    this.base.credits -= Math.round(deficit * getPrice('electricity-per-battery-unit'))
+    this.base.credits -= Math.round(deficit * this.effectiveElectricityPrice())
     miner.battery = MINER_BATTERY_MAX
     this.base.pushToStore()
   }
@@ -2616,6 +2627,28 @@ export class SpaceScene extends Phaser.Scene {
     if (cam.zoom < this.minZoom) cam.setZoom(this.minZoom)
   }
 
+  // --- Cost levers: effective consumable prices = base × capacity-vs-demand factor.
+  // Demand is owned-fleet composition (idle-safe: a count, not a timed drain).
+  private effectiveElectricityPrice(): number {
+    return effectivePrice(getPrice('electricity-per-battery-unit'), this.base.solarCapacity, this.autoMiners.length)
+  }
+
+  private effectiveRefuelPrice(): number {
+    return effectivePrice(getPrice('dock-refuel'), this.base.propellantCapacity, this.ships.length)
+  }
+
+  private effectiveRepairPrice(): number {
+    return effectivePrice(getPrice('repair-per-condition-point'), this.base.foundryCapacity, this.autoMiners.length)
+  }
+
+  private pushInfrastructureStore(): void {
+    infrastructure.set({
+      solar:      { capacity: this.base.solarCapacity,      demand: this.autoMiners.length, price: this.effectiveElectricityPrice(), base: getPrice('electricity-per-battery-unit') },
+      propellant: { capacity: this.base.propellantCapacity, demand: this.ships.length,      price: this.effectiveRefuelPrice(),      base: getPrice('dock-refuel') },
+      foundry:    { capacity: this.base.foundryCapacity,    demand: this.autoMiners.length, price: this.effectiveRepairPrice(),      base: getPrice('repair-per-condition-point') },
+    })
+  }
+
   update(_time: number, delta: number): void {
     this.drainCommandQueue()
     this.pushStationUsage()
@@ -2630,6 +2663,7 @@ export class SpaceScene extends Phaser.Scene {
     if (this.marketPushAccumulator >= 0.25) {
       this.marketPushAccumulator = 0
       this.base.pushMarketToStore()
+      this.pushInfrastructureStore()
     }
 
     // Advance the base along its orbit, then move everything anchored to it

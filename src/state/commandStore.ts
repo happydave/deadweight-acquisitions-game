@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store'
 import type { ResourceType } from '../world/worldConfig'
+import type { LeverKey } from '../entities/Base'
 
 export type GameCommand =
   | { type: 'sellResource'; resourceType: ResourceType }
@@ -15,6 +16,7 @@ export type GameCommand =
   | { type: 'purchaseHangar' }
   | { type: 'purchasePressurization' }
   | { type: 'purchaseSiloCapacity' }
+  | { type: 'investInfrastructure'; lever: LeverKey }
   | { type: 'designateAsteroid'; asteroidId: string }
   | { type: 'undesignateAsteroid'; asteroidId: string }
   | { type: 'collectNet'; netId: string }

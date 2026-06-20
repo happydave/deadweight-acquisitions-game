@@ -3,13 +3,20 @@ import { baseState } from '../state/baseStore'
 import { resourceMarket } from '../state/marketStore'
 import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
 import { type ResourceMarket, makeMarket, currentPrice, sell, recover } from '../world/market'
-import { AUTOMINER_PURCHASE_COST } from './AutoMiner'
+import { investCapacity } from '../world/infrastructure'
+import { AUTOMINER_PURCHASE_COST, STATION_MINER_SLOT_CAP } from './AutoMiner'
 import { getPrice } from '../world/pricingSeam'
-
-const RESOURCE_TYPES: ResourceType[] = ['iron', 'ice', 'silicates', 'rare-metals']
-import { STATION_MINER_SLOT_CAP } from './AutoMiner'
 import { SERVICE_SLOT_COUNT } from '../world/serviceSlots'
 import { HANGAR_BAY_COUNT } from '../world/hangarBays'
+
+const RESOURCE_TYPES: ResourceType[] = ['iron', 'ice', 'silicates', 'rare-metals']
+
+export type LeverKey = 'solar' | 'propellant' | 'foundry'
+const LEVER_RESOURCE: Record<LeverKey, ResourceType> = {
+  solar:      'silicates',
+  propellant: 'ice',
+  foundry:    'iron',
+}
 
 export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
@@ -52,6 +59,9 @@ export class Base extends Phaser.GameObjects.Image {
   orbitalRadius: number
   orbitalAngle: number
   markets: Record<ResourceType, ResourceMarket>
+  solarCapacity: number
+  propellantCapacity: number
+  foundryCapacity: number
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -74,6 +84,9 @@ export class Base extends Phaser.GameObjects.Image {
       silicates:     makeMarket(RESOURCE_SELL_PRICES.silicates),
       'rare-metals': makeMarket(RESOURCE_SELL_PRICES['rare-metals']),
     }
+    this.solarCapacity = 0
+    this.propellantCapacity = 0
+    this.foundryCapacity = 0
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -128,6 +141,19 @@ export class Base extends Phaser.GameObjects.Image {
     this.credits += revenue
     this.pushToStore()
     this.pushMarketToStore()
+  }
+
+  /** Spends all of a lever's resource from the silo to raise its capacity. No-op if none held. */
+  investInfrastructure(lever: LeverKey): boolean {
+    const resource = LEVER_RESOURCE[lever]
+    const qty = this.storage[resource] ?? 0
+    if (qty <= 0) return false
+    this.storage[resource] = 0
+    if (lever === 'solar') this.solarCapacity = investCapacity(this.solarCapacity, qty)
+    else if (lever === 'propellant') this.propellantCapacity = investCapacity(this.propellantCapacity, qty)
+    else this.foundryCapacity = investCapacity(this.foundryCapacity, qty)
+    this.pushToStore()
+    return true
   }
 
   /** Advances per-resource sell-price recovery (pressure decays toward zero). */

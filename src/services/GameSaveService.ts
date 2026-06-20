@@ -297,6 +297,19 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 23:
+      // v23 → v24: add per-lever infrastructure capacities on base (default 0)
+      raw = {
+        ...raw,
+        schemaVersion: 24,
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          solarCapacity: (raw.base as { solarCapacity?: number }).solarCapacity ?? 0,
+          propellantCapacity: (raw.base as { propellantCapacity?: number }).propellantCapacity ?? 0,
+          foundryCapacity: (raw.base as { foundryCapacity?: number }).foundryCapacity ?? 0,
+        },
+      } as unknown as SaveState
+      // falls through
+    case 24:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)
