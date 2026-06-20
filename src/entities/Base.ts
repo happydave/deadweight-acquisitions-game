@@ -1,8 +1,12 @@
 import Phaser from 'phaser'
 import { baseState } from '../state/baseStore'
+import { resourceMarket } from '../state/marketStore'
 import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
+import { type ResourceMarket, makeMarket, currentPrice, sell, recover } from '../world/market'
 import { AUTOMINER_PURCHASE_COST } from './AutoMiner'
 import { getPrice } from '../world/pricingSeam'
+
+const RESOURCE_TYPES: ResourceType[] = ['iron', 'ice', 'silicates', 'rare-metals']
 import { STATION_MINER_SLOT_CAP } from './AutoMiner'
 import { SERVICE_SLOT_COUNT } from '../world/serviceSlots'
 import { HANGAR_BAY_COUNT } from '../world/hangarBays'
@@ -47,6 +51,7 @@ export class Base extends Phaser.GameObjects.Image {
   autoDesignate: boolean
   orbitalRadius: number
   orbitalAngle: number
+  markets: Record<ResourceType, ResourceMarket>
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -63,12 +68,19 @@ export class Base extends Phaser.GameObjects.Image {
     this.stationMinerSlotCount = 0
     this.stationMinerIds = []
     this.autoDesignate = false
+    this.markets = {
+      iron:          makeMarket(RESOURCE_SELL_PRICES.iron),
+      ice:           makeMarket(RESOURCE_SELL_PRICES.ice),
+      silicates:     makeMarket(RESOURCE_SELL_PRICES.silicates),
+      'rare-metals': makeMarket(RESOURCE_SELL_PRICES['rare-metals']),
+    }
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
       Phaser.Geom.Circle.Contains,
     )
     this.pushToStore()
+    this.pushMarketToStore()
   }
 
   /** Advances the base along its orbit and repositions it (planet at world center). */
@@ -110,9 +122,28 @@ export class Base extends Phaser.GameObjects.Image {
   sellResource(type: ResourceType): void {
     const qty = this.storage[type] ?? 0
     if (qty <= 0) return
+    const { revenue, market } = sell(this.markets[type], qty)
+    this.markets[type] = market
     this.storage[type] = 0
-    this.credits += qty * RESOURCE_SELL_PRICES[type]
+    this.credits += revenue
     this.pushToStore()
+    this.pushMarketToStore()
+  }
+
+  /** Advances per-resource sell-price recovery (pressure decays toward zero). */
+  recoverMarkets(dt: number): void {
+    for (const type of RESOURCE_TYPES) {
+      this.markets[type] = recover(this.markets[type], dt)
+    }
+  }
+
+  pushMarketToStore(): void {
+    resourceMarket.set({
+      iron:          { current: currentPrice(this.markets.iron),          baseline: this.markets.iron.baseline },
+      ice:           { current: currentPrice(this.markets.ice),           baseline: this.markets.ice.baseline },
+      silicates:     { current: currentPrice(this.markets.silicates),     baseline: this.markets.silicates.baseline },
+      'rare-metals': { current: currentPrice(this.markets['rare-metals']), baseline: this.markets['rare-metals'].baseline },
+    })
   }
 
   chargeDockFee(isPublic: boolean): void {

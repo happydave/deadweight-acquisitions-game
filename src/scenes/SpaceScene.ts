@@ -167,6 +167,7 @@ export class SpaceScene extends Phaser.Scene {
   private minZoom = 0.1
   private gameClock = 0
   private autoSaveAccumulator = 0
+  private marketPushAccumulator = 0
   private companyArrivalAccumulator = 0
   private followCam = false
   private minimap!: Phaser.GameObjects.Graphics
@@ -253,6 +254,10 @@ export class SpaceScene extends Phaser.Scene {
     this.base = new Base(this, BASE_X, BASE_Y)
     this.base.storage = { ...save.base.storage }
     this.base.storageCapacity = save.base.storageCapacity ?? BASE_STORAGE_CAPACITY
+    for (const type of ['iron', 'ice', 'silicates', 'rare-metals'] as ResourceType[]) {
+      this.base.markets[type].pressure = save.base.marketPressure?.[type] ?? 0
+    }
+    this.base.pushMarketToStore()
     this.base.credits = save.base.credits
     this.base.ownedDockCount = save.base.ownedDockCount ?? 0
     this.base.ownedHangarCount = save.base.ownedHangarCount ?? 0
@@ -513,12 +518,18 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 22,
+      schemaVersion: 23,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
         storage: { ...this.base.storage },
         storageCapacity: this.base.storageCapacity,
+        marketPressure: {
+          iron:          this.base.markets.iron.pressure,
+          ice:           this.base.markets.ice.pressure,
+          silicates:     this.base.markets.silicates.pressure,
+          'rare-metals': this.base.markets['rare-metals'].pressure,
+        },
         credits: this.base.credits,
         ownedDockCount: this.base.ownedDockCount,
         ownedHangarCount: this.base.ownedHangarCount,
@@ -2611,6 +2622,15 @@ export class SpaceScene extends Phaser.Scene {
 
     const dt = delta / 1000
     this.gameClock += dt
+
+    // Recover resource sell prices toward baseline; push to the UI a few times a
+    // second rather than every frame (the price moves slowly).
+    this.base.recoverMarkets(dt)
+    this.marketPushAccumulator += dt
+    if (this.marketPushAccumulator >= 0.25) {
+      this.marketPushAccumulator = 0
+      this.base.pushMarketToStore()
+    }
 
     // Advance the base along its orbit, then move everything anchored to it
     // (label, slot/hangar markers, docked/serviced ships).

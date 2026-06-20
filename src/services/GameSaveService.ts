@@ -286,6 +286,17 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 22:
+      // v22 → v23: add per-resource marketPressure on base (defaults to undepressed)
+      raw = {
+        ...raw,
+        schemaVersion: 23,
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          marketPressure: (raw.base as { marketPressure?: unknown }).marketPressure ?? {},
+        },
+      } as unknown as SaveState
+      // falls through
+    case 23:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

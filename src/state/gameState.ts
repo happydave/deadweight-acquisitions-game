@@ -74,6 +74,7 @@ export interface ShipSnapshot {
 export interface BaseSnapshot {
   storage: Partial<Record<ResourceType, number>>
   storageCapacity: number
+  marketPressure: Partial<Record<ResourceType, number>>
   credits: number
   ownedDockCount: number
   ownedHangarCount: number
@@ -110,7 +111,7 @@ export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, storageCapacity: 2000, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
+  base: { storage: {}, storageCapacity: 2000, marketPressure: {}, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
   asteroids: [],
   ships: [],
   autoMiners: [],

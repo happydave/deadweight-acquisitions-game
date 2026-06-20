@@ -1,8 +1,9 @@
 <script lang="ts">
   import { baseState, basePanelOpen, stationUsage } from '../state/baseStore'
+  import { resourceMarket } from '../state/marketStore'
   import { commandQueue } from '../state/commandStore'
   import { selectedShip } from '../state/shipStore'
-  import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
+  import { type ResourceType } from '../world/worldConfig'
   import { SHIP_COMMISSION_COST, SILO_CAPACITY_INCREMENT } from '../entities/Base'
   import { AUTOMINER_PURCHASE_COST, STATION_MINER_SLOT_CAP } from '../entities/AutoMiner'
   import {
@@ -127,11 +128,14 @@
     <div class="section-title">MARKET</div>
     {#each RESOURCE_ORDER as type}
       {@const qty = Math.floor($baseState.storage[type] ?? 0)}
-      {@const price = RESOURCE_SELL_PRICES[type]}
+      {@const mkt = $resourceMarket[type]}
+      {@const depressed = mkt.current < mkt.baseline - 0.05}
       <div class="row market-row" class:disabled={qty <= 0}>
         <span class="label resource-{type}">{RESOURCE_LABELS[type]}</span>
         <span class="qty">{qty}</span>
-        <span class="price">@ {price}cr</span>
+        <span class="price" class:depressed>
+          @ {mkt.current.toFixed(1)}cr{#if depressed}<span class="base-ref"> /{mkt.baseline}</span>{/if}
+        </span>
         <button
           class="sell-btn"
           disabled={qty <= 0}
@@ -375,6 +379,15 @@
     border-left: 2px solid #ff6655;
     padding-left: 4px;
     margin: 2px 0;
+  }
+
+  .price.depressed {
+    color: #ffaa66;
+  }
+
+  .base-ref {
+    color: #7a8a99;
+    font-size: 0.85em;
   }
 
   .credits {
