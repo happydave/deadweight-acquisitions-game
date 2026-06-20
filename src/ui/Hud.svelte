@@ -3,6 +3,7 @@
   import { fleetSummary } from '../state/fleetStore'
   import { commandQueue } from '../state/commandStore'
   import { autoMinerSummary, activeBeacons, attachNotifications, minerAvailability } from '../state/autoMinerStore'
+  import { activeMarketEvents } from '../state/marketEventStore'
 
   let saveLabel = 'Save'
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -44,6 +45,11 @@
     <span class="hud-key">Credits</span>
     <span class="hud-val credits">{$baseState.credits}</span>
   </div>
+  {#each $activeMarketEvents as ev}
+    <div class="hud-row market-event" class:up={ev.multiplier > 1}>
+      <span class="event-msg">{ev.multiplier > 1 ? '▲' : '▼'} {ev.resourceType} {ev.type} ×{ev.multiplier.toFixed(1)}</span>
+    </div>
+  {/each}
   <div class="hud-row hud-section">
     <span class="hud-key">Fleet</span>
   </div>
@@ -212,6 +218,20 @@
   .dispatch-btn:hover {
     color: #ffcc88;
     border-color: #ffaa44;
+  }
+
+  .market-event {
+    border-left: 2px solid #cc8844;
+    padding-left: 4px;
+  }
+
+  .event-msg {
+    color: #ffaa44;
+    font-size: 10px;
+  }
+
+  .market-event.up .event-msg {
+    color: #66cc88;
   }
 
   .silo-full .hud-val {

@@ -90,6 +90,11 @@ import { getPrice } from '../world/pricingSeam'
 import { effectivePrice } from '../world/infrastructure'
 import { infrastructure } from '../state/infrastructureStore'
 import type { LeverKey } from '../entities/Base'
+import { createRng } from '../world/rng'
+import {
+  type MarketEvent, rollEvent, nextInterval, isExpired, combinedMultiplier,
+} from '../world/marketEvents'
+import { activeMarketEvents } from '../state/marketEventStore'
 
 const NOTIFICATION_DURATION_MS = 4000
 const WORLD_SIZE = 8500
@@ -171,6 +176,9 @@ export class SpaceScene extends Phaser.Scene {
   private gameClock = 0
   private autoSaveAccumulator = 0
   private marketPushAccumulator = 0
+  private marketEvents: MarketEvent[] = []
+  private nextEventAt = 0
+  private eventSeed = 0
   private companyArrivalAccumulator = 0
   private followCam = false
   private minimap!: Phaser.GameObjects.Graphics
@@ -217,6 +225,8 @@ export class SpaceScene extends Phaser.Scene {
       this.spawnBase()
       this.spawnWorld()
       this.spawnStarterShip()
+      this.eventSeed = gameState.worldSeed >>> 0
+      this.advanceSchedule(false) // schedule the first market event
     }
 
     this.minimap = this.add.graphics()
@@ -264,6 +274,13 @@ export class SpaceScene extends Phaser.Scene {
     this.base.solarCapacity = save.base.solarCapacity ?? 0
     this.base.propellantCapacity = save.base.propellantCapacity ?? 0
     this.base.foundryCapacity = save.base.foundryCapacity ?? 0
+    // Restore market-event schedule (legacy/unscheduled saves get a fresh schedule).
+    const me = save.marketEvents
+    this.marketEvents = me?.active ? [...me.active] : []
+    this.eventSeed = me?.seed ?? (save.worldSeed >>> 0)
+    this.nextEventAt = me?.nextEventAt ?? 0
+    if (this.nextEventAt === 0) this.advanceSchedule(false)
+    activeMarketEvents.set([...this.marketEvents])
     this.base.credits = save.base.credits
     this.base.ownedDockCount = save.base.ownedDockCount ?? 0
     this.base.ownedHangarCount = save.base.ownedHangarCount ?? 0
@@ -524,7 +541,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 24,
+      schemaVersion: 25,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -619,6 +636,7 @@ export class SpaceScene extends Phaser.Scene {
         status: d.status,
         claimedByShipId: d.claimedByShipId,
       })),
+      marketEvents: { active: [...this.marketEvents], nextEventAt: this.nextEventAt, seed: this.eventSeed },
     }
   }
 
@@ -2641,6 +2659,28 @@ export class SpaceScene extends Phaser.Scene {
     return effectivePrice(getPrice('repair-per-condition-point'), this.base.foundryCapacity, this.autoMiners.length)
   }
 
+  // --- Market events: seeded, persisted exogenous shocks that shift sell baselines.
+  private advanceSchedule(spawn: boolean): void {
+    const rng = createRng(Math.imul(this.eventSeed, 0x9e3779b1) >>> 0)
+    this.eventSeed = (this.eventSeed + 1) >>> 0
+    if (spawn) this.marketEvents.push(rollEvent(rng, this.gameClock))
+    this.nextEventAt = this.gameClock + nextInterval(rng)
+  }
+
+  private updateMarketEvents(): void {
+    // Spawn at most one due event per tick (caps catch-up after a backgrounded tab).
+    if (this.gameClock >= this.nextEventAt) this.advanceSchedule(true)
+    this.marketEvents = this.marketEvents.filter(e => !isExpired(e, this.gameClock))
+    const now = this.gameClock
+    this.base.applyEventMultipliers({
+      iron:          combinedMultiplier(this.marketEvents, 'iron', now),
+      ice:           combinedMultiplier(this.marketEvents, 'ice', now),
+      silicates:     combinedMultiplier(this.marketEvents, 'silicates', now),
+      'rare-metals': combinedMultiplier(this.marketEvents, 'rare-metals', now),
+    })
+    activeMarketEvents.set([...this.marketEvents])
+  }
+
   private pushInfrastructureStore(): void {
     infrastructure.set({
       solar:      { capacity: this.base.solarCapacity,      demand: this.autoMiners.length, price: this.effectiveElectricityPrice(), base: getPrice('electricity-per-battery-unit') },
@@ -2662,6 +2702,7 @@ export class SpaceScene extends Phaser.Scene {
     this.marketPushAccumulator += dt
     if (this.marketPushAccumulator >= 0.25) {
       this.marketPushAccumulator = 0
+      this.updateMarketEvents()
       this.base.pushMarketToStore()
       this.pushInfrastructureStore()
     }

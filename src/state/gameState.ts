@@ -1,4 +1,5 @@
 import type { ResourceType, SizeCategory } from '../world/worldConfig'
+import type { MarketEvent } from '../world/marketEvents'
 import type { ShipState } from './shipStore'
 import type { AttachmentPoint } from './attachmentTypes'
 import type { AutoMinerState, BeaconReason } from '../entities/AutoMiner'
@@ -105,6 +106,7 @@ export interface SaveState {
   autoMiners: AutoMinerSnapshot[]
   cargoNets: CargoNetSnapshot[]
   designations: MiningDesignationSnapshot[]
+  marketEvents: { active: MarketEvent[]; nextEventAt: number; seed: number }
 }
 
 // Template defaults for a fresh state. `storageCapacity` mirrors
@@ -120,4 +122,5 @@ export const gameState: SaveState = {
   autoMiners: [],
   cargoNets: [],
   designations: [],
+  marketEvents: { active: [], nextEventAt: 0, seed: 0 },
 }

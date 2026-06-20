@@ -119,6 +119,13 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
     scene rewrites the three sinks (recharge, dock-refuel, repair) to charge the
     effective price and pushes the `infrastructure` store. Idle-safe: demand is a
     count, prices only paid on activity.
+  - Market events: seeded, persisted exogenous shocks (`world/marketEvents.ts`,
+    pure/tested) that shift a resource's sell baseline for a window (spike/glut/
+    drought). The scene schedules them from a persisted `eventSeed` counter +
+    `nextEventAt` (deterministic, reload-resumes), expires by window, and overlays
+    multipliers via `Base.applyEventMultipliers` (baseline = `RESOURCE_SELL_PRICES`
+    × event multiplier), composing with the WI 526 pressure. `activeMarketEvents`
+    store drives the HUD readout. Events shift price only — never a charge.
   - Constants: `BASE_STORAGE_CAPACITY`, `SILO_CAPACITY_INCREMENT`, `STARTING_CREDITS`,
     `SHIP_COMMISSION_COST`, `BASE_ORBIT_K` (and station purchase costs)
 
@@ -128,8 +135,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **GameSaveService** `/src/services/GameSaveService.ts`
   - Inputs: `SaveState` plain objects; localStorage
   - Outputs: `SaveState | null` from `load()`; persists to localStorage on `save()`
-  - Schema version: 24 (current); `migrate()` uses a fallthrough switch from v1→v24; each case upgrades one concern and falls through
-  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity`; v23 persists per-resource `marketPressure`; v24 persists per-lever infrastructure capacities (solar/propellant/foundry). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
+  - Schema version: 25 (current); `migrate()` uses a fallthrough switch from v1→v25; each case upgrades one concern and falls through
+  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity`; v23 persists per-resource `marketPressure`; v24 persists per-lever infrastructure capacities; v25 persists top-level `marketEvents` (active events + next-event time + seed counter). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
 
 - **gameState** `/src/state/gameState.ts`
   - Type definitions only: `SaveState`, `ShipSnapshot`, `AutoMinerSnapshot`, `CargoNetSnapshot`, `AsteroidSnapshot`, `BaseSnapshot`
@@ -312,7 +319,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 ### Save / load cycle
 ```
 1. SpaceScene.update(): autoSaveAccumulator += dt; when >= 10s → GameSaveService.save(buildSaveState())
-2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=24)
+2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=25)
 3. GameSaveService.save(): JSON.stringify(SaveState) → localStorage['dwa-save']
 4. On load: GameSaveService.load() → JSON.parse → migrate() fallthrough switch upgrades schema → return SaveState
 5. SpaceScene.loadFromSave(): re-creates all entity instances from snapshot data; restores timers and states

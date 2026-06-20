@@ -163,6 +163,13 @@ export class Base extends Phaser.GameObjects.Image {
     }
   }
 
+  /** Overlays market-event multipliers onto the static baselines (1 = no event). */
+  applyEventMultipliers(mult: Record<ResourceType, number>): void {
+    for (const type of RESOURCE_TYPES) {
+      this.markets[type].baseline = RESOURCE_SELL_PRICES[type] * (mult[type] ?? 1)
+    }
+  }
+
   pushMarketToStore(): void {
     resourceMarket.set({
       iron:          { current: currentPrice(this.markets.iron),          baseline: this.markets.iron.baseline },

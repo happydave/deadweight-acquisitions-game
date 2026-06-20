@@ -310,6 +310,14 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 24:
+      // v24 → v25: add top-level marketEvents (legacy saves get a fresh schedule on load)
+      raw = {
+        ...raw,
+        schemaVersion: 25,
+        marketEvents: (raw as { marketEvents?: unknown }).marketEvents ?? { active: [], nextEventAt: 0, seed: 0 },
+      } as unknown as SaveState
+      // falls through
+    case 25:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)
