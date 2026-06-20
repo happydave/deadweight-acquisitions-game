@@ -2,6 +2,8 @@
   import { baseState, basePanelOpen, stationUsage } from '../state/baseStore'
   import { resourceMarket } from '../state/marketStore'
   import { infrastructure, type LeverKey } from '../state/infrastructureStore'
+  import { priceHistory } from '../state/metricsStore'
+  import Sparkline from './Sparkline.svelte'
   import { commandQueue } from '../state/commandStore'
   import { selectedShip } from '../state/shipStore'
   import { type ResourceType } from '../world/worldConfig'
@@ -162,6 +164,15 @@
           disabled={qty <= 0}
           on:click={() => sellResource(type)}
         >Sell</button>
+      </div>
+    {/each}
+
+    <!-- Price history -->
+    <div class="section-title">PRICE HISTORY</div>
+    {#each RESOURCE_ORDER as type}
+      <div class="row metric-row">
+        <span class="label resource-{type}">{RESOURCE_LABELS[type]}</span>
+        <Sparkline samples={$priceHistory[type]} />
       </div>
     {/each}
 
@@ -476,6 +487,15 @@
     flex: 1;
     text-align: right;
     padding-right: 6px;
+  }
+
+  .metric-row {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .metric-row .label {
+    flex: 1;
   }
 
   .toggle-btn {

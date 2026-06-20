@@ -164,6 +164,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **baseStore** `/src/state/baseStore.ts`
   - Writable stores: `baseState: BaseState`, `basePanelOpen: boolean`, `stationUsage: StationUsage` (miner storage used/total; dock & hangar in-use/total/public — drives the Station Usage panel)
+  - Economy stores (Phase 4): `resourceMarket` (per-resource current/baseline sell price), `infrastructure` (per-lever capacity/demand/effective-vs-base price), `activeMarketEvents` (HUD event list), `priceHistory` (per-resource bounded `{t,current,baseline}` series for the sparklines — **ephemeral, not persisted**)
 
 - **commandStore** `/src/state/commandStore.ts`
   - Writable store: `commandQueue: GameCommand[]`
@@ -198,8 +199,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **BasePanel** `/src/ui/BasePanel.svelte`
   - Reads: `baseState`, `basePanelOpen`, `selectedShip`, `stationUsage`
-  - Writes: `commandQueue` (sellResource, commissionShip, upgradeShip, purchaseMiner into Base storage, purchase owned dock/hangar/miner-slot/pressurization/silo-capacity)
-  - Displays: market, ship commission, cargo upgrades, station purchases, and a Station Usage section (miner storage; dock/hangar in-use with public-fee notes)
+  - Writes: `commandQueue` (sellResource, investInfrastructure, commissionShip, upgradeShip, purchaseMiner into Base storage, purchase owned dock/hangar/miner-slot/pressurization/silo-capacity)
+  - Displays: market (live sell prices + Sell/Invest), PRICE HISTORY sparklines (`Sparkline.svelte`, hand-rolled SVG from `priceHistory`), INFRASTRUCTURE (cost-lever capacity/demand/price), ship commission, cargo upgrades, station purchases, and a Station Usage section (miner storage; dock/hangar in-use with public-fee notes)
 
 ---
 

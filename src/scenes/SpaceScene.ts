@@ -95,6 +95,12 @@ import {
   type MarketEvent, rollEvent, nextInterval, isExpired, combinedMultiplier,
 } from '../world/marketEvents'
 import { activeMarketEvents } from '../state/marketEventStore'
+import { currentPrice } from '../world/market'
+import { pushBounded } from '../world/history'
+import { priceHistory, type PriceSample } from '../state/metricsStore'
+
+const METRICS_SAMPLE_INTERVAL = 1
+const METRICS_MAX_SAMPLES = 180
 
 const NOTIFICATION_DURATION_MS = 4000
 const WORLD_SIZE = 8500
@@ -179,6 +185,10 @@ export class SpaceScene extends Phaser.Scene {
   private marketEvents: MarketEvent[] = []
   private nextEventAt = 0
   private eventSeed = 0
+  private metricsSampleAccumulator = 0
+  private priceSeries: Record<ResourceType, PriceSample[]> = {
+    iron: [], ice: [], silicates: [], 'rare-metals': [],
+  }
   private companyArrivalAccumulator = 0
   private followCam = false
   private minimap!: Phaser.GameObjects.Graphics
@@ -2681,6 +2691,22 @@ export class SpaceScene extends Phaser.Scene {
     activeMarketEvents.set([...this.marketEvents])
   }
 
+  private sampleMetrics(): void {
+    const t = this.gameClock
+    for (const type of ['iron', 'ice', 'silicates', 'rare-metals'] as ResourceType[]) {
+      const m = this.base.markets[type]
+      this.priceSeries[type] = pushBounded(
+        this.priceSeries[type], { t, current: currentPrice(m), baseline: m.baseline }, METRICS_MAX_SAMPLES,
+      )
+    }
+    priceHistory.set({
+      iron:          this.priceSeries.iron,
+      ice:           this.priceSeries.ice,
+      silicates:     this.priceSeries.silicates,
+      'rare-metals': this.priceSeries['rare-metals'],
+    })
+  }
+
   private pushInfrastructureStore(): void {
     infrastructure.set({
       solar:      { capacity: this.base.solarCapacity,      demand: this.autoMiners.length, price: this.effectiveElectricityPrice(), base: getPrice('electricity-per-battery-unit') },
@@ -2705,6 +2731,12 @@ export class SpaceScene extends Phaser.Scene {
       this.updateMarketEvents()
       this.base.pushMarketToStore()
       this.pushInfrastructureStore()
+    }
+
+    this.metricsSampleAccumulator += dt
+    if (this.metricsSampleAccumulator >= METRICS_SAMPLE_INTERVAL) {
+      this.metricsSampleAccumulator = 0
+      this.sampleMetrics()
     }
 
     // Advance the base along its orbit, then move everything anchored to it
