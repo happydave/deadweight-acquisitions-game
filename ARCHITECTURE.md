@@ -62,6 +62,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Inputs: `AsteroidData` (from worldGenerator), per-frame orbital angle update from SpaceScene
   - Outputs: `selectedAsteroid` store (when selected); emits `'asteroid-selected'` event; `currentQuantity` consumed by AutoMiner
   - Maintains Keplerian orbit: `angle += ORBITAL_K / radius^1.5 * dt`
+  - **Composition (Phase 5):** carries a `composition` (`world/composition.ts`, pure/tested: dominant resource 0.6–0.85 + weight-distributed traces, normalized) and a `scanned` flag. `resourceType` is retained as the **dominant** (= max-fraction), so texture/mining/net behaviour is unchanged; composition is latent until the ore pipeline (WI 541) consumes it and the scanner (WI 542) reveals it. Company asteroids skew high-value via `COMPANY_RESOURCE_WEIGHTS`.
 
 - **Ship** `/src/entities/Ship.ts` — `Phaser.Physics.Arcade.Sprite`
   - Inputs: per-frame `update(dt)` call from SpaceScene, state mutations from SpaceScene methods
@@ -135,8 +136,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **GameSaveService** `/src/services/GameSaveService.ts`
   - Inputs: `SaveState` plain objects; localStorage
   - Outputs: `SaveState | null` from `load()`; persists to localStorage on `save()`
-  - Schema version: 25 (current); `migrate()` uses a fallthrough switch from v1→v25; each case upgrades one concern and falls through
-  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity`; v23 persists per-resource `marketPressure`; v24 persists per-lever infrastructure capacities; v25 persists top-level `marketEvents` (active events + next-event time + seed counter). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
+  - Schema version: 26 (current); `migrate()` uses a fallthrough switch from v1→v26; each case upgrades one concern and falls through
+  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity`; v23 persists per-resource `marketPressure`; v24 persists per-lever infrastructure capacities; v25 persists top-level `marketEvents`; v26 adds asteroid `composition` (pure-dominant for legacy) + `scanned`. Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
 
 - **gameState** `/src/state/gameState.ts`
   - Type definitions only: `SaveState`, `ShipSnapshot`, `AutoMinerSnapshot`, `CargoNetSnapshot`, `AsteroidSnapshot`, `BaseSnapshot`
@@ -320,7 +321,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 ### Save / load cycle
 ```
 1. SpaceScene.update(): autoSaveAccumulator += dt; when >= 10s → GameSaveService.save(buildSaveState())
-2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=25)
+2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=26)
 3. GameSaveService.save(): JSON.stringify(SaveState) → localStorage['dwa-save']
 4. On load: GameSaveService.load() → JSON.parse → migrate() fallthrough switch upgrades schema → return SaveState
 5. SpaceScene.loadFromSave(): re-creates all entity instances from snapshot data; restores timers and states

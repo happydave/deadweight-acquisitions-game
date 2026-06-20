@@ -2,6 +2,8 @@ import type { SaveState } from '../state/gameState'
 import { makeDefaultLoadout } from '../state/attachmentTypes'
 import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities/Ship'
 import { BASE_STORAGE_CAPACITY } from '../entities/Base'
+import { pureComposition } from '../world/composition'
+import type { ResourceType } from '../world/worldConfig'
 import { MINER_BATTERY_MAX, MINER_RCS_MAX } from '../entities/AutoMiner'
 
 const SAVE_KEY = 'dwa-save'
@@ -318,6 +320,18 @@ function migrate(raw: SaveState): SaveState | null {
       } as unknown as SaveState
       // falls through
     case 25:
+      // v25 → v26: add composition (pure-dominant from resourceType) + scanned to asteroids
+      raw = {
+        ...raw,
+        schemaVersion: 26,
+        asteroids: (raw.asteroids as unknown as Array<{ resourceType: ResourceType; composition?: unknown; scanned?: boolean }>).map(a => ({
+          ...a,
+          composition: a.composition ?? pureComposition(a.resourceType),
+          scanned: a.scanned ?? false,
+        })),
+      } as unknown as SaveState
+      // falls through
+    case 26:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

@@ -552,7 +552,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 25,
+      schemaVersion: 26,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -583,6 +583,8 @@ export class SpaceScene extends Phaser.Scene {
         orbitalRadius: a.orbitalRadius,
         orbitalAngle: a.orbitalAngle,
         resourceType: a.resourceType,
+        composition: a.composition,
+        scanned: a.scanned,
         sizeCategory: a.sizeCategory,
         currentQuantity: a.currentQuantity,
         maxQuantity: a.maxQuantity,

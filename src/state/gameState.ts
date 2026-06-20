@@ -1,4 +1,5 @@
 import type { ResourceType, SizeCategory } from '../world/worldConfig'
+import type { Composition } from '../world/composition'
 import type { MarketEvent } from '../world/marketEvents'
 import type { ShipState } from './shipStore'
 import type { AttachmentPoint } from './attachmentTypes'
@@ -12,6 +13,8 @@ export interface AsteroidSnapshot {
   orbitalRadius: number
   orbitalAngle: number
   resourceType: ResourceType
+  composition: Composition
+  scanned: boolean
   sizeCategory: SizeCategory
   currentQuantity: number
   maxQuantity: number

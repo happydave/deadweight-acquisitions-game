@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { SIZE_CONFIGS, ASTEROID_TEXTURE_SIZE, ORBITAL_K, type ResourceType, type SizeCategory } from '../world/worldConfig'
+import type { Composition } from '../world/composition'
 import type { AsteroidData } from '../world/worldGenerator'
 import { selectedAsteroid } from '../state/shipStore'
 import { get } from 'svelte/store'
@@ -13,6 +14,8 @@ const DEPLETION_SCALE_MIN = 0.2
 export class Asteroid extends Phaser.GameObjects.Image {
   readonly id: string
   readonly resourceType: ResourceType
+  readonly composition: Composition
+  scanned: boolean
   currentQuantity: number
   readonly maxQuantity: number
   readonly sizeCategory: SizeCategory
@@ -26,6 +29,8 @@ export class Asteroid extends Phaser.GameObjects.Image {
     super(scene, 0, 0, `asteroid-${data.resourceType}`)
     this.id = data.id
     this.resourceType = data.resourceType
+    this.composition = data.composition
+    this.scanned = data.scanned
     this.currentQuantity = data.currentQuantity
     this.maxQuantity = data.maxQuantity
     this.sizeCategory = data.sizeCategory
