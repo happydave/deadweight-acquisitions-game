@@ -364,7 +364,13 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **Dev tooling** (F9, default on in development): a per-tick **invariant sweep**
   (`checkInvariants`, end of autoDispatch) logs structural violations at their
   origin, and a **debug overlay** (`updateDebugOverlay`) draws per-entity state
-  labels. The bug-prone decisions are also unit-tested via `simLogic`.
+  labels. The bug-prone decisions are also unit-tested via `simLogic`. The sweep
+  includes **economy invariants** (`world/economyInvariants.ts`, pure/tested:
+  non-negative silo/capacity/pressure, positive baseline, current ≤ baseline,
+  active-event window validity — over-cap silo is legal and excluded), and the
+  overlay shows an economy readout (prices, lever capacities, active events) near
+  the base. All Phase 4 economy logic lives in pure, unit-tested `world/` modules
+  (`market`, `infrastructure`, `marketEvents`, `history`, `economyInvariants`).
 
 ---
 

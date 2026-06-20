@@ -98,6 +98,7 @@ import { activeMarketEvents } from '../state/marketEventStore'
 import { currentPrice } from '../world/market'
 import { pushBounded } from '../world/history'
 import { priceHistory, type PriceSample } from '../state/metricsStore'
+import { checkEconomy } from '../world/economyInvariants'
 
 const METRICS_SAMPLE_INTERVAL = 1
 const METRICS_MAX_SAMPLES = 180
@@ -1308,10 +1309,21 @@ export class SpaceScene extends Phaser.Scene {
       }
     }
 
-    // 6: (removed) "storage within capacity" is no longer an invariant — the silo
-    // soft-caps, so an in-flight unload legally pushes it transiently over capacity.
-    // Back-pressure (halting auto-designate while full) is enforced at the
-    // designation call site rather than checked as a standing state here.
+    // 6: economy invariants (silo soft-cap over-capacity is legal and excluded;
+    // only corrupt/out-of-bounds economy state is reported). Pure, unit-tested.
+    const econ = checkEconomy({
+      markets: {
+        iron:          { current: currentPrice(this.base.markets.iron),          baseline: this.base.markets.iron.baseline,          pressure: this.base.markets.iron.pressure },
+        ice:           { current: currentPrice(this.base.markets.ice),           baseline: this.base.markets.ice.baseline,           pressure: this.base.markets.ice.pressure },
+        silicates:     { current: currentPrice(this.base.markets.silicates),     baseline: this.base.markets.silicates.baseline,     pressure: this.base.markets.silicates.pressure },
+        'rare-metals': { current: currentPrice(this.base.markets['rare-metals']), baseline: this.base.markets['rare-metals'].baseline, pressure: this.base.markets['rare-metals'].pressure },
+      },
+      capacities: { solar: this.base.solarCapacity, propellant: this.base.propellantCapacity, foundry: this.base.foundryCapacity },
+      silo: this.base.storage,
+      events: this.marketEvents,
+      gameClock: this.gameClock,
+    })
+    for (const msg of econ) warn(msg)
 
     // 7: owned-dock occupancy consistent with ships.
     for (let i = 0; i < this.slotOccupants.length; i++) {
@@ -1384,6 +1396,17 @@ export class SpaceScene extends Phaser.Scene {
       if (!ast) continue
       label(`d:${d.asteroidId}`, ast.x, ast.y + 14, `[${d.status}]`, '#88ffaa', true)
     }
+
+    // Economy readout near the base: per-resource price (current/baseline),
+    // cost-lever capacities, and active events.
+    const prices = (['iron', 'ice', 'silicates', 'rare-metals'] as ResourceType[])
+      .map(t => `${t.slice(0, 2)} ${currentPrice(this.base.markets[t]).toFixed(1)}/${this.base.markets[t].baseline.toFixed(1)}`)
+      .join('  ')
+    const levers = `cap sol${this.base.solarCapacity.toFixed(0)} prop${this.base.propellantCapacity.toFixed(0)} fnd${this.base.foundryCapacity.toFixed(0)}`
+    const events = this.marketEvents.length > 0
+      ? this.marketEvents.map(e => `${e.resourceType.slice(0, 2)}${e.type[0]}×${e.multiplier.toFixed(1)}`).join(' ')
+      : 'none'
+    label('econ', this.base.x, this.base.y - 46, `${prices}\n${levers}\nev: ${events}`, '#ccbb77')
 
     for (const [key, t] of this.debugLabels) {
       if (!seen.has(key)) {
