@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { selectScanHauler, type SlottedShip } from './dispatchLogic'
 import type { AttachmentPoint } from '../state/attachmentTypes'
 
-const medium = (payload: AttachmentPoint['payload']): AttachmentPoint => ({ id: 'm', size: 'medium', payload })
+const smallSlot = (payload: AttachmentPoint['payload']): AttachmentPoint => ({ id: 's', size: 'small', payload })
 const ship = (id: string, x: number, payload: AttachmentPoint['payload'], state = 'idle'): SlottedShip => ({
-  id, shipState: state, x, y: 0, attachmentPoints: [medium(payload)],
+  id, shipState: state, x, y: 0, attachmentPoints: [smallSlot(payload)],
 })
 const target = { x: 0, y: 0 }
 

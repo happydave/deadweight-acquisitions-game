@@ -22,6 +22,10 @@ export function shipHasFreeMediumSlot(ship: SlottedShip): boolean {
   return ship.attachmentPoints.some(ap => ap.size === 'medium' && ap.payload === null)
 }
 
+export function shipHasFreeSmallSlot(ship: SlottedShip): boolean {
+  return ship.attachmentPoints.some(ap => ap.size === 'small' && ap.payload === null)
+}
+
 /** Returns the nearest idle ship that has at least one free medium slot, or null. */
 export function selectDispatchTarget<S extends SlottedShip>(
   ships: S[],
@@ -103,7 +107,7 @@ export function selectScanHauler<S extends SlottedShip>(
   if (carrier) return { ship: carrier, drawFromStorage: false }
 
   if (scannerCount > 0) {
-    const free = nearest(idle.filter(shipHasFreeMediumSlot))
+    const free = nearest(idle.filter(shipHasFreeSmallSlot)) // probes use a small slot
     if (free) return { ship: free, drawFromStorage: true }
   }
   return null

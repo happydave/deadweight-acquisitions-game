@@ -97,7 +97,7 @@ import { currentPrice } from '../world/market'
 import { pushBounded } from '../world/history'
 import { priceHistory, type PriceSample } from '../state/metricsStore'
 import { checkEconomy } from '../world/economyInvariants'
-import { separate, PROCESSING_RATE } from '../world/processing'
+import { separate, PROCESSING_RATE, PROCESSING_COST_FACTOR } from '../world/processing'
 import { oreSilo } from '../state/oreSiloStore'
 
 const METRICS_SAMPLE_INTERVAL = 1
@@ -2489,10 +2489,12 @@ export class SpaceScene extends Phaser.Scene {
 
       const hauler = pick.ship
       if (pick.drawFromStorage) {
-        if (!this.claimFreeMediumSlot(hauler, { kind: 'scanner' })) {
+        const slot = hauler.attachmentPoints.find(ap => ap.size === 'small' && ap.payload === null)
+        if (!slot) {
           this.releaseDesignation(designation.id)
           continue
         }
+        slot.payload = { kind: 'scanner' }
         this.base.scannerCount--
         this.base.pushToStore()
       }
@@ -2846,7 +2848,7 @@ export class SpaceScene extends Phaser.Scene {
     const drained = this.base.drainOre(PROCESSING_RATE * dt)
     if (drained <= 0) return false
     this.base.acceptCargo(separate(drained, composition))
-    this.base.credits -= drained * (this.effectiveElectricityPrice() + getPrice('processing-fee'))
+    this.base.credits -= drained * (this.effectiveElectricityPrice() + getPrice('processing-fee')) * PROCESSING_COST_FACTOR
     this.base.pushToStore()
     return true
   }
