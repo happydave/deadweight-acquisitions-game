@@ -71,6 +71,7 @@ export class Base extends Phaser.GameObjects.Image {
   oreQuantity: number
   oreComposition: Composition
   oreSiloCapacity: number
+  scannerCount: number
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -99,6 +100,7 @@ export class Base extends Phaser.GameObjects.Image {
     this.oreQuantity = 0
     this.oreComposition = { ...EMPTY_COMPOSITION }
     this.oreSiloCapacity = ORE_SILO_CAPACITY
+    this.scannerCount = 0
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -303,6 +305,14 @@ export class Base extends Phaser.GameObjects.Image {
     return drained
   }
 
+  purchaseScanner(): boolean {
+    if (this.credits < getPrice('scanner-purchase')) return false
+    this.credits -= getPrice('scanner-purchase')
+    this.scannerCount++
+    this.pushToStore()
+    return true
+  }
+
   purchaseOreSiloCapacity(): boolean {
     if (this.credits < getPrice('ore-silo-capacity-upgrade')) return false
     this.credits -= getPrice('ore-silo-capacity-upgrade')
@@ -323,6 +333,7 @@ export class Base extends Phaser.GameObjects.Image {
       ownedHangarCount: this.ownedHangarCount,
       hangarPressurized: this.hangarPressurized,
       autoDesignate: this.autoDesignate,
+      scannerCount: this.scannerCount,
     })
   }
 }

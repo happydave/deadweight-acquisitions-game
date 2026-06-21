@@ -12,6 +12,7 @@ export type PriceKey =
   | 'silo-capacity-upgrade'
   | 'ore-silo-capacity-upgrade'
   | 'processing-fee'
+  | 'scanner-purchase'
 
 const PRICES: Record<PriceKey, number> = {
   'fuel-refuel':                  20,  // credits for a full thruster-fuel tank (per-unit at point of refuel)
@@ -27,6 +28,7 @@ const PRICES: Record<PriceKey, number> = {
   'silo-capacity-upgrade':       300,
   'ore-silo-capacity-upgrade':   300,
   'processing-fee':                1,  // per ore unit processed (public service)
+  'scanner-purchase':            150,  // a reusable scanner probe into station storage
 }
 
 export function getPrice(key: PriceKey): number {

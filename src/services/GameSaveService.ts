@@ -358,6 +358,26 @@ function migrate(raw: SaveState): SaveState | null {
       // falls through
     }
     case 27:
+      // v27 → v28: scanner probe support. Tag designations kind='mine'; add base
+      // scannerCount; add ship isScanJob. All default to the pre-scanner state.
+      raw = {
+        ...raw,
+        schemaVersion: 28,
+        designations: (raw.designations as unknown as Array<{ kind?: string }>).map(d => ({
+          ...d,
+          kind: d.kind ?? 'mine',
+        })),
+        ships: (raw.ships as unknown as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          isScanJob: (s as { isScanJob?: boolean }).isScanJob ?? false,
+        })),
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          scannerCount: (raw.base as { scannerCount?: number }).scannerCount ?? 0,
+        },
+      } as unknown as SaveState
+      // falls through
+    case 28:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

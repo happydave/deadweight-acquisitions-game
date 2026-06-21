@@ -102,6 +102,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   heading: number   // degrees, 0 = east
   attachmentPoints: AttachmentPoint[]
   asteroidTarget: Asteroid | null
+  isScanJob: boolean = false // travelling to the asteroidTarget to scan it, not mine it
   speedMultiplier = 1.0
   unloadTimer: number
   attachUnloadTimer: number = 0
@@ -219,7 +220,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         // On arrival, SpaceScene detects the deploying-miner state and calls performDeploy.
         this.steerTowardTarget(dt, MINER_DEPLOY_PROXIMITY, () => {
           this.setVelocity(0, 0)
-          this.shipState = 'deploying-miner'
+          this.shipState = this.isScanJob ? 'scanning' : 'deploying-miner'
           this.pushToStore()
         })
         break
@@ -253,6 +254,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         this.rcsFuel = Math.max(0, this.rcsFuel - HAULER_RCS_DRAIN_MANEUVER * dt)
         break
       case 'deploying-miner':
+      case 'scanning':
       case 'waiting-at-asteroid':
       case 'collecting-nets':
       case 'resupplying-miner':
@@ -321,6 +323,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private arriveIdle(): void {
     this.shipState = 'idle'
     this.target = null
+    this.isScanJob = false
     this.pushToStore()
   }
 
@@ -338,6 +341,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     // re-targets in-flight ships each frame to track the moving slot/base.
     this.target = slotTarget ? { ...slotTarget } : { x: this.base.x, y: this.base.y }
     this.asteroidTarget = null
+    this.isScanJob = false
     this.waitOrbitalAngle = null
     this.minerTarget = null
     this.pushToStore()

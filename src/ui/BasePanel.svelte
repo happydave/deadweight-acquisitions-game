@@ -67,6 +67,11 @@
     commandQueue.update(q => [...q, { type: 'purchaseMiner' }])
   }
 
+  const SCANNER_COST = getPrice('scanner-purchase')
+  function purchaseScanner(): void {
+    commandQueue.update(q => [...q, { type: 'purchaseScanner' }])
+  }
+
   $: hasMinerStorage = $baseState.stationMinerCount < $baseState.stationMinerSlotCount
   $: canBuyMiner = $baseState.credits >= AUTOMINER_PURCHASE_COST && hasMinerStorage
 
@@ -250,6 +255,15 @@
     {#if !hasMinerStorage}
       <div class="row"><span class="fee-note">No free miner storage — buy a Miner Slot below</span></div>
     {/if}
+    <div class="row shipyard-row" class:disabled={$baseState.credits < SCANNER_COST}>
+      <span class="label">Scanner Probe ({$baseState.scannerCount})</span>
+      <span class="price">{SCANNER_COST}cr</span>
+      <button
+        class="commission-btn"
+        disabled={$baseState.credits < SCANNER_COST}
+        on:click={purchaseScanner}
+      >Buy</button>
+    </div>
 
     <!-- Station usage -->
     <div class="section-title">STATION USAGE</div>

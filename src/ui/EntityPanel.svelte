@@ -196,7 +196,9 @@
     {/if}
   </div>
 {:else if $selectedAsteroid}
-  {@const designation = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id) ?? null}
+  {@const mineDesig = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id && d.kind === 'mine') ?? null}
+  {@const scanDesig = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id && d.kind === 'scan') ?? null}
+  {@const compOrder = ['iron', 'ice', 'silicates', 'rare-metals'] as const}
   <div class="panel">
     <div class="name asteroid-name">{$selectedAsteroid.resourceType}</div>
     <div class="row">
@@ -207,25 +209,63 @@
       <span class="label">Quantity</span>
       <span class="value">{Math.floor($selectedAsteroid.currentQuantity)} / {$selectedAsteroid.maxQuantity}</span>
     </div>
-    {#if designation === null}
+
+    {#if $selectedAsteroid.scanned}
+      {#each compOrder as r}
+        {#if $selectedAsteroid.composition[r] > 0}
+          <div class="row">
+            <span class="label resource-{r}">{r}</span>
+            <span class="value">{Math.round($selectedAsteroid.composition[r] * 100)}%</span>
+          </div>
+        {/if}
+      {/each}
+    {:else}
+      <div class="row">
+        <span class="label">Composition</span>
+        <span class="value">dominant {$selectedAsteroid.resourceType} — scan to reveal</span>
+      </div>
+    {/if}
+
+    {#if mineDesig === null}
       <button
         class="action-btn"
         on:click={() => commandQueue.update(q => [...q, { type: 'designateAsteroid', asteroidId: $selectedAsteroid!.id }])}
       >Designate for Mining</button>
-    {:else if designation.status === 'fulfilled'}
+    {:else if mineDesig.status === 'fulfilled'}
       <div class="row">
-        <span class="label">Status</span>
+        <span class="label">Mining</span>
         <span class="value desig-fulfilled">being mined</span>
       </div>
     {:else}
       <div class="row">
-        <span class="label">Status</span>
-        <span class="value desig-{designation.status}">{designation.status}</span>
+        <span class="label">Mining</span>
+        <span class="value desig-{mineDesig.status}">{mineDesig.status}</span>
       </div>
       <button
         class="action-btn action-btn-cancel"
         on:click={() => commandQueue.update(q => [...q, { type: 'undesignateAsteroid', asteroidId: $selectedAsteroid!.id }])}
       >Un-designate</button>
+    {/if}
+
+    {#if $selectedAsteroid.scanned}
+      <div class="row">
+        <span class="label">Scan</span>
+        <span class="value desig-fulfilled">scanned ✓</span>
+      </div>
+    {:else if scanDesig === null}
+      <button
+        class="action-btn"
+        on:click={() => commandQueue.update(q => [...q, { type: 'designateScan', asteroidId: $selectedAsteroid!.id }])}
+      >Designate for Scanning</button>
+    {:else}
+      <div class="row">
+        <span class="label">Scan</span>
+        <span class="value desig-{scanDesig.status}">{scanDesig.status}</span>
+      </div>
+      <button
+        class="action-btn action-btn-cancel"
+        on:click={() => commandQueue.update(q => [...q, { type: 'undesignateScan', asteroidId: $selectedAsteroid!.id }])}
+      >Cancel Scan</button>
     {/if}
   </div>
 {/if}

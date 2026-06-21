@@ -20,6 +20,9 @@ export type GameCommand =
   | { type: 'investInfrastructure'; lever: LeverKey }
   | { type: 'designateAsteroid'; asteroidId: string }
   | { type: 'undesignateAsteroid'; asteroidId: string }
+  | { type: 'designateScan'; asteroidId: string }
+  | { type: 'undesignateScan'; asteroidId: string }
+  | { type: 'purchaseScanner' }
   | { type: 'collectNet'; netId: string }
   | { type: 'repairMiner'; minerId: string }
   | { type: 'toggleAutoDesignate' }

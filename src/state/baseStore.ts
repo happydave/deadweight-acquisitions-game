@@ -12,6 +12,7 @@ export interface BaseState {
   ownedHangarCount: number
   hangarPressurized: boolean
   autoDesignate: boolean
+  scannerCount: number
 }
 
 export const baseState = writable<BaseState>({
@@ -25,6 +26,7 @@ export const baseState = writable<BaseState>({
   ownedHangarCount: 0,
   hangarPressurized: false,
   autoDesignate: false,
+  scannerCount: 0,
 })
 
 export const basePanelOpen = writable<boolean>(true) // pinned open by default; closed only via the panel's X

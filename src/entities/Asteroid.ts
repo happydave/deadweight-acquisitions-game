@@ -81,6 +81,8 @@ export class Asteroid extends Phaser.GameObjects.Image {
     selectedAsteroid.set({
       id: this.id,
       resourceType: this.resourceType,
+      composition: this.composition,
+      scanned: this.scanned,
       currentQuantity: this.currentQuantity,
       maxQuantity: this.maxQuantity,
       sizeCategory: this.sizeCategory,
@@ -91,6 +93,8 @@ export class Asteroid extends Phaser.GameObjects.Image {
     selectedAsteroid.set({
       id: this.id,
       resourceType: this.resourceType,
+      composition: this.composition,
+      scanned: this.scanned,
       currentQuantity: this.currentQuantity,
       maxQuantity: this.maxQuantity,
       sizeCategory: this.sizeCategory,
