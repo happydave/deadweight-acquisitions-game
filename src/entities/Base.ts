@@ -4,6 +4,8 @@ import { resourceMarket } from '../state/marketStore'
 import { RESOURCE_SELL_PRICES, type ResourceType } from '../world/worldConfig'
 import { type ResourceMarket, makeMarket, currentPrice, sell, recover } from '../world/market'
 import { investCapacity } from '../world/infrastructure'
+import { type Composition } from '../world/composition'
+import { blendOre } from '../world/processing'
 import { AUTOMINER_PURCHASE_COST, STATION_MINER_SLOT_CAP } from './AutoMiner'
 import { getPrice } from '../world/pricingSeam'
 import { SERVICE_SLOT_COUNT } from '../world/serviceSlots'
@@ -22,6 +24,10 @@ export const BASE_TEXTURE_KEY = 'base'
 export const BASE_STORAGE_CAPACITY = 2000
 // Each silo-expansion purchase raises the total-tonnage cap by this much.
 export const SILO_CAPACITY_INCREMENT = 1000
+// Raw-ore silo: holds mined ore upstream of processing (Phase 5).
+export const ORE_SILO_CAPACITY = 1500
+export const ORE_SILO_INCREMENT = 1000
+const EMPTY_COMPOSITION: Composition = { iron: 0, ice: 0, silicates: 0, 'rare-metals': 0 }
 export const STARTING_CREDITS = 750
 export const SHIP_COMMISSION_COST = 500
 // Keplerian constant for the base's orbit around the planet. Matches the world
@@ -62,6 +68,9 @@ export class Base extends Phaser.GameObjects.Image {
   solarCapacity: number
   propellantCapacity: number
   foundryCapacity: number
+  oreQuantity: number
+  oreComposition: Composition
+  oreSiloCapacity: number
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, BASE_TEXTURE_KEY)
@@ -87,6 +96,9 @@ export class Base extends Phaser.GameObjects.Image {
     this.solarCapacity = 0
     this.propellantCapacity = 0
     this.foundryCapacity = 0
+    this.oreQuantity = 0
+    this.oreComposition = { ...EMPTY_COMPOSITION }
+    this.oreSiloCapacity = ORE_SILO_CAPACITY
     scene.add.existing(this)
     this.setInteractive(
       new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
@@ -261,6 +273,40 @@ export class Base extends Phaser.GameObjects.Image {
     if (this.credits < getPrice('silo-capacity-upgrade')) return false
     this.credits -= getPrice('silo-capacity-upgrade')
     this.storageCapacity += SILO_CAPACITY_INCREMENT
+    this.pushToStore()
+    return true
+  }
+
+  // --- Raw-ore silo (Phase 5) ---
+
+  /** Ore silo is full once stored ore reaches capacity (soft cap — see acceptOre). */
+  isOreSiloFull(): boolean {
+    return this.oreQuantity >= this.oreSiloCapacity
+  }
+
+  /** Blends a delivered ore batch into the silo (always accepted; may transiently over-cap). */
+  acceptOre(qty: number, composition: Composition): void {
+    if (qty <= 0) return
+    const blended = blendOre(this.oreQuantity, this.oreComposition, qty, composition)
+    this.oreQuantity = blended.quantity
+    this.oreComposition = blended.composition
+  }
+
+  /** Removes up to `amount` ore for processing; returns the amount actually drained (composition unchanged). */
+  drainOre(amount: number): number {
+    const drained = Math.min(amount, this.oreQuantity)
+    this.oreQuantity -= drained
+    if (this.oreQuantity <= 1e-6) {
+      this.oreQuantity = 0
+      this.oreComposition = { ...EMPTY_COMPOSITION }
+    }
+    return drained
+  }
+
+  purchaseOreSiloCapacity(): boolean {
+    if (this.credits < getPrice('ore-silo-capacity-upgrade')) return false
+    this.credits -= getPrice('ore-silo-capacity-upgrade')
+    this.oreSiloCapacity += ORE_SILO_INCREMENT
     this.pushToStore()
     return true
   }

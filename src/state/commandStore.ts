@@ -16,6 +16,7 @@ export type GameCommand =
   | { type: 'purchaseHangar' }
   | { type: 'purchasePressurization' }
   | { type: 'purchaseSiloCapacity' }
+  | { type: 'purchaseOreSiloCapacity' }
   | { type: 'investInfrastructure'; lever: LeverKey }
   | { type: 'designateAsteroid'; asteroidId: string }
   | { type: 'undesignateAsteroid'; asteroidId: string }

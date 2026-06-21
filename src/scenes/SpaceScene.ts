@@ -20,7 +20,7 @@ import {
   type ResourceType,
 } from '../world/worldConfig'
 import { Asteroid } from '../entities/Asteroid'
-import { Base, generateBaseTexture, BASE_STORAGE_CAPACITY } from '../entities/Base'
+import { Base, generateBaseTexture, BASE_STORAGE_CAPACITY, ORE_SILO_CAPACITY } from '../entities/Base'
 import { Planet, generatePlanetTexture } from '../entities/Planet'
 import {
   Ship,
@@ -99,6 +99,8 @@ import { currentPrice } from '../world/market'
 import { pushBounded } from '../world/history'
 import { priceHistory, type PriceSample } from '../state/metricsStore'
 import { checkEconomy } from '../world/economyInvariants'
+import { separate, PROCESSING_RATE } from '../world/processing'
+import { oreSilo } from '../state/oreSiloStore'
 
 const METRICS_SAMPLE_INTERVAL = 1
 const METRICS_MAX_SAMPLES = 180
@@ -238,6 +240,7 @@ export class SpaceScene extends Phaser.Scene {
       this.spawnStarterShip()
       this.eventSeed = gameState.worldSeed >>> 0
       this.advanceSchedule(false) // schedule the first market event
+      this.pushOreSiloStore(false)
     }
 
     this.minimap = this.add.graphics()
@@ -285,6 +288,10 @@ export class SpaceScene extends Phaser.Scene {
     this.base.solarCapacity = save.base.solarCapacity ?? 0
     this.base.propellantCapacity = save.base.propellantCapacity ?? 0
     this.base.foundryCapacity = save.base.foundryCapacity ?? 0
+    this.base.oreQuantity = save.base.oreQuantity ?? 0
+    this.base.oreComposition = save.base.oreComposition ?? { iron: 0, ice: 0, silicates: 0, 'rare-metals': 0 }
+    this.base.oreSiloCapacity = save.base.oreSiloCapacity ?? ORE_SILO_CAPACITY
+    this.pushOreSiloStore(false)
     // Restore market-event schedule (legacy/unscheduled saves get a fresh schedule).
     const me = save.marketEvents
     this.marketEvents = me?.active ? [...me.active] : []
@@ -323,6 +330,7 @@ export class SpaceScene extends Phaser.Scene {
       miner.rcsFuel = snap.rcsFuel ?? MINER_RCS_MAX
       miner.beaconReason = snap.beaconReason ?? null
       miner.activeResourceType = snap.activeResourceType ?? null
+      miner.activeComposition = snap.activeComposition ?? null
       miner.asteroidId = snap.asteroidId
       miner.spareNetCount = snap.spareNetCount
       miner.activeNetFill = snap.activeNetFill
@@ -357,7 +365,7 @@ export class SpaceScene extends Phaser.Scene {
     for (const snap of save.cargoNets) {
       const net = new CargoNet(
         this,
-        snap.resourceType as import('../world/worldConfig').ResourceType,
+        snap.composition,
         snap.quantity,
         snap.asteroidId,
         snap.id,
@@ -552,7 +560,7 @@ export class SpaceScene extends Phaser.Scene {
 
   private buildSaveState(): SaveState {
     return {
-      schemaVersion: 26,
+      schemaVersion: 27,
       worldSeed: gameState.worldSeed,
       gameClock: this.gameClock,
       base: {
@@ -567,6 +575,9 @@ export class SpaceScene extends Phaser.Scene {
         solarCapacity: this.base.solarCapacity,
         propellantCapacity: this.base.propellantCapacity,
         foundryCapacity: this.base.foundryCapacity,
+        oreQuantity: this.base.oreQuantity,
+        oreComposition: this.base.oreComposition,
+        oreSiloCapacity: this.base.oreSiloCapacity,
         credits: this.base.credits,
         ownedDockCount: this.base.ownedDockCount,
         ownedHangarCount: this.base.ownedHangarCount,
@@ -630,6 +641,7 @@ export class SpaceScene extends Phaser.Scene {
         rcsFuel: m.rcsFuel,
         beaconReason: m.beaconReason,
         activeResourceType: m.activeResourceType,
+        activeComposition: m.activeComposition,
       })),
       cargoNets: this.cargoNets
         .filter(n => n.state === 'full-tethered')
@@ -637,6 +649,7 @@ export class SpaceScene extends Phaser.Scene {
           id: n.id,
           state: n.state,
           resourceType: n.resourceType,
+          composition: n.composition,
           quantity: n.quantity,
           asteroidId: n.asteroidId,
           freeOrbitalRadius: n.freeOrbitalRadius,
@@ -1024,7 +1037,7 @@ export class SpaceScene extends Phaser.Scene {
           for (const netId of miner.tetheredNetIds) {
             const net = this.cargoNetMap.get(netId)
             if (net) {
-              this.base.acceptCargo({ [net.resourceType]: net.quantity })
+              this.base.acceptOre(net.quantity, net.composition)
               this.cargoNetMap.delete(net.id)
               this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
               if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
@@ -1062,7 +1075,7 @@ export class SpaceScene extends Phaser.Scene {
       // stranded), even if it pushes the silo transiently over capacity. Acquisition
       // is halted upstream (auto-designate) when the silo is full.
       if (net) {
-        this.base.acceptCargo({ [net.resourceType]: net.quantity })
+        this.base.acceptOre(net.quantity, net.composition)
         this.cargoNetMap.delete(net.id)
         this.cargoNets = this.cargoNets.filter(n => n.id !== net.id)
         if (this.selectedCargoNetEntity === net) this.selectedCargoNetEntity = null
@@ -1599,9 +1612,10 @@ export class SpaceScene extends Phaser.Scene {
     const asteroid = new Asteroid(this, data)
     this.asteroids.push(asteroid)
     this.asteroidMap.set(asteroid.id, asteroid)
-    // Back-pressure: a full silo halts new acquisition so an unattended fleet
-    // converges and idles rather than mining into a silo it cannot unload into.
-    if (this.base.autoDesignate && !this.base.isSiloFull()) {
+    // Back-pressure: a full ORE silo halts new acquisition (mining now fills the ore
+    // silo; the resource silo full instead pauses processing). An unattended fleet
+    // converges and idles rather than mining ore it cannot store.
+    if (this.base.autoDesignate && !this.base.isOreSiloFull()) {
       this.addDesignation(asteroid.id)
     }
   }
@@ -1678,6 +1692,9 @@ export class SpaceScene extends Phaser.Scene {
       this.base.purchasePressurization()
     } else if (cmd.type === 'purchaseSiloCapacity') {
       this.base.purchaseSiloCapacity()
+    } else if (cmd.type === 'purchaseOreSiloCapacity') {
+      this.base.purchaseOreSiloCapacity()
+      this.pushOreSiloStore(false)
     } else if (cmd.type === 'investInfrastructure') {
       this.base.investInfrastructure(cmd.lever)
     } else if (cmd.type === 'designateAsteroid') {
@@ -2732,6 +2749,30 @@ export class SpaceScene extends Phaser.Scene {
     })
   }
 
+  // --- Processing: autonomously drain the ore silo, separating ore into resources.
+  // Idle-safe (only while ore present); pauses when the resource silo is full so it
+  // never over-fills it (the back-pressure chain: resource full → ore backs up →
+  // mining halts). Returns whether it processed this tick (for the UI status).
+  private processOre(dt: number): boolean {
+    if (this.base.oreQuantity <= 0 || this.base.isSiloFull()) return false
+    const composition = { ...this.base.oreComposition }
+    const drained = this.base.drainOre(PROCESSING_RATE * dt)
+    if (drained <= 0) return false
+    this.base.acceptCargo(separate(drained, composition))
+    this.base.credits -= drained * (this.effectiveElectricityPrice() + getPrice('processing-fee'))
+    this.base.pushToStore()
+    return true
+  }
+
+  private pushOreSiloStore(processing: boolean): void {
+    oreSilo.set({
+      quantity: this.base.oreQuantity,
+      capacity: this.base.oreSiloCapacity,
+      composition: { ...this.base.oreComposition },
+      processing,
+    })
+  }
+
   private pushInfrastructureStore(): void {
     infrastructure.set({
       solar:      { capacity: this.base.solarCapacity,      demand: this.autoMiners.length, price: this.effectiveElectricityPrice(), base: getPrice('electricity-per-battery-unit') },
@@ -2752,10 +2793,13 @@ export class SpaceScene extends Phaser.Scene {
     this.base.recoverMarkets(dt)
     this.marketPushAccumulator += dt
     if (this.marketPushAccumulator >= 0.25) {
+      const elapsed = this.marketPushAccumulator
       this.marketPushAccumulator = 0
       this.updateMarketEvents()
+      const processing = this.processOre(elapsed)
       this.base.pushMarketToStore()
       this.pushInfrastructureStore()
+      this.pushOreSiloStore(processing)
     }
 
     this.metricsSampleAccumulator += dt

@@ -1,7 +1,7 @@
 import type { SaveState } from '../state/gameState'
 import { makeDefaultLoadout } from '../state/attachmentTypes'
 import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities/Ship'
-import { BASE_STORAGE_CAPACITY } from '../entities/Base'
+import { BASE_STORAGE_CAPACITY, ORE_SILO_CAPACITY } from '../entities/Base'
 import { pureComposition } from '../world/composition'
 import type { ResourceType } from '../world/worldConfig'
 import { MINER_BATTERY_MAX, MINER_RCS_MAX } from '../entities/AutoMiner'
@@ -331,7 +331,31 @@ function migrate(raw: SaveState): SaveState | null {
         })),
       } as unknown as SaveState
       // falls through
-    case 26:
+    case 26: {
+      // v26 → v27: ore-pipeline cutover. Nets carry composition (pure from their
+      // resourceType); miners gain activeComposition; the base gains the raw-ore silo.
+      const emptyComp = { iron: 0, ice: 0, silicates: 0, 'rare-metals': 0 }
+      raw = {
+        ...raw,
+        schemaVersion: 27,
+        cargoNets: (raw.cargoNets as unknown as Array<{ resourceType: ResourceType; composition?: unknown }>).map(n => ({
+          ...n,
+          composition: n.composition ?? pureComposition(n.resourceType),
+        })),
+        autoMiners: (raw.autoMiners as unknown as Array<{ activeResourceType?: ResourceType | null; activeComposition?: unknown }>).map(m => ({
+          ...m,
+          activeComposition: m.activeComposition ?? (m.activeResourceType ? pureComposition(m.activeResourceType) : null),
+        })),
+        base: {
+          ...(raw.base as unknown as Record<string, unknown>),
+          oreQuantity: (raw.base as { oreQuantity?: number }).oreQuantity ?? 0,
+          oreComposition: (raw.base as { oreComposition?: unknown }).oreComposition ?? emptyComp,
+          oreSiloCapacity: (raw.base as { oreSiloCapacity?: number }).oreSiloCapacity ?? ORE_SILO_CAPACITY,
+        },
+      } as unknown as SaveState
+      // falls through
+    }
+    case 27:
       return raw
     default:
       console.warn(`GameSaveService: unrecognized schema version ${raw.schemaVersion}, discarding save`)

@@ -4,6 +4,7 @@
   import { commandQueue } from '../state/commandStore'
   import { autoMinerSummary, activeBeacons, attachNotifications, minerAvailability } from '../state/autoMinerStore'
   import { activeMarketEvents } from '../state/marketEventStore'
+  import { oreSilo } from '../state/oreSiloStore'
 
   let saveLabel = 'Save'
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -24,6 +25,7 @@
   }
 
   $: siloFull = totalStored($baseState.storage) >= $baseState.storageCapacity
+  $: oreFull = $oreSilo.quantity >= $oreSilo.capacity
 </script>
 
 <div class="hud">
@@ -33,7 +35,14 @@
     <span class="hud-val">{Math.floor(totalStored($baseState.storage))} / {$baseState.storageCapacity}</span>
   </div>
   {#if siloFull}
-    <div class="hud-row silo-warning">⚠ Silo full — mining halted</div>
+    <div class="hud-row silo-warning">⚠ Storage full — processing paused; sell to resume</div>
+  {/if}
+  <div class="hud-row" class:silo-full={oreFull}>
+    <span class="hud-key">Raw ore</span>
+    <span class="hud-val">{Math.floor($oreSilo.quantity)} / {$oreSilo.capacity}</span>
+  </div>
+  {#if oreFull}
+    <div class="hud-row silo-warning">⚠ Ore silo full — mining halted</div>
   {/if}
   {#each storageEntries($baseState.storage) as [type, qty]}
     <div class="hud-row hud-indent">

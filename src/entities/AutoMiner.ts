@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { nanoid } from 'nanoid'
 import { selectedAutoMiner } from '../state/autoMinerStore'
 import type { ResourceType } from '../world/worldConfig'
+import type { Composition } from '../world/composition'
 import type { Asteroid } from './Asteroid'
 import { CargoNet } from './CargoNet'
 
@@ -110,7 +111,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   asteroidId: string | null
   spareNetCount: number
   activeNetFill: number
-  activeResourceType: ResourceType | null = null // type of the in-progress active net
+  activeResourceType: ResourceType | null = null // dominant of the in-progress active net
+  activeComposition: Composition | null = null   // ore composition of the in-progress active net
   tetheredNetIds: string[]
   readonly technologyLevel: number
   isSelected: boolean
@@ -172,6 +174,7 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     asteroid.currentQuantity -= extracted
     this.activeNetFill += extracted
     this.activeResourceType = asteroid.resourceType
+    this.activeComposition = asteroid.composition
     asteroid.pushToStore()
 
     if (asteroid.currentQuantity <= 0) {
@@ -183,14 +186,14 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     }
 
     if (this.activeNetFill >= NET_CAPACITY) {
-      this.ejectNet(asteroid.resourceType)
+      this.ejectNet(asteroid.composition)
     }
   }
 
-  private ejectNet(resourceType: ResourceType): void {
+  private ejectNet(composition: Composition): void {
     this.state = 'ejecting-net'
 
-    const net = new CargoNet(this.scene, resourceType, this.activeNetFill, this.asteroidId)
+    const net = new CargoNet(this.scene, composition, this.activeNetFill, this.asteroidId)
     net.setPosition(this.x + 10, this.y - 10)
     this.tetheredNetIds = [...this.tetheredNetIds, net.id]
     this.activeNetFill = 0
@@ -215,8 +218,8 @@ export class AutoMiner extends Phaser.GameObjects.Image {
    * loses). No-op if there is no fill or the resource type is unknown.
    */
   ejectActiveNet(): void {
-    if (this.activeNetFill <= 0 || this.activeResourceType === null) return
-    const net = new CargoNet(this.scene, this.activeResourceType, this.activeNetFill, this.asteroidId)
+    if (this.activeNetFill <= 0 || this.activeComposition === null) return
+    const net = new CargoNet(this.scene, this.activeComposition, this.activeNetFill, this.asteroidId)
     net.setPosition(this.x + 10, this.y - 10)
     this.tetheredNetIds = [...this.tetheredNetIds, net.id]
     this.activeNetFill = 0

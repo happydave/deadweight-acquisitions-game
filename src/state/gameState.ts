@@ -25,6 +25,7 @@ export interface CargoNetSnapshot {
   id: string
   state: CargoNetState
   resourceType: string
+  composition: Composition
   quantity: number
   asteroidId: string | null
   freeOrbitalRadius: number | null
@@ -47,6 +48,7 @@ export interface AutoMinerSnapshot {
   rcsFuel: number
   beaconReason: BeaconReason
   activeResourceType: ResourceType | null
+  activeComposition: Composition | null
 }
 
 export interface ShipSnapshot {
@@ -82,6 +84,9 @@ export interface BaseSnapshot {
   solarCapacity: number
   propellantCapacity: number
   foundryCapacity: number
+  oreQuantity: number
+  oreComposition: Composition
+  oreSiloCapacity: number
   credits: number
   ownedDockCount: number
   ownedHangarCount: number
@@ -119,7 +124,7 @@ export const gameState: SaveState = {
   schemaVersion: 1,
   worldSeed: 0,
   gameClock: 0,
-  base: { storage: {}, storageCapacity: 2000, marketPressure: {}, solarCapacity: 0, propellantCapacity: 0, foundryCapacity: 0, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
+  base: { storage: {}, storageCapacity: 2000, marketPressure: {}, solarCapacity: 0, propellantCapacity: 0, foundryCapacity: 0, oreQuantity: 0, oreComposition: { iron: 0, ice: 0, silicates: 0, 'rare-metals': 0 }, oreSiloCapacity: 1500, credits: 0, ownedDockCount: 0, ownedHangarCount: 0, hangarPressurized: false, stationMinerSlotCount: 0, stationMinerIds: [], autoDesignate: false, orbitalAngle: Math.PI / 2 },
   asteroids: [],
   ships: [],
   autoMiners: [],

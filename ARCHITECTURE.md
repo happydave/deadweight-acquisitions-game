@@ -80,7 +80,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **CargoNet** `/src/entities/CargoNet.ts` — `Phaser.GameObjects.Image`
   - Inputs: created by `AutoMiner.ejectNet()` or restored from save
-  - Outputs: `selectedCargoNet` store; `quantity` and `resourceType` transferred to Base on unload
+  - **Phase 5:** carries **ore** — a `composition` (the source asteroid's, from the miner's `activeComposition`) + `quantity`; `resourceType` is the dominant, kept for display/colour. On unload, ore is deposited into the Base **raw-ore silo** (`acceptOre`), not separated resources into the resource silo.
   - States: `full-tethered` (at a miner, or orphaned in free-orbit — both visible), `in-transit` (carried on a hauler slot), `unloading` (at base)
   - Free-orbit fields (`freeOrbitalRadius`/`freeOrbitalAngle`) + `designatedForCollection`: when a miner is recovered without all its nets, the leftover nets are orphaned to free-orbit and stay recoverable via the player "designate for collection" action (never destroyed)
   - Constants: `NET_LEAKAGE_FRACTION=0.05` (quantity loss on collection), `NET_COLLECT_DURATION_MS=1500`
@@ -127,7 +127,17 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
     multipliers via `Base.applyEventMultipliers` (baseline = `RESOURCE_SELL_PRICES`
     × event multiplier), composing with the WI 526 pressure. `activeMarketEvents`
     store drives the HUD readout. Events shift price only — never a charge.
-  - Constants: `BASE_STORAGE_CAPACITY`, `SILO_CAPACITY_INCREMENT`, `STARTING_CREDITS`,
+  - Raw-ore silo & processing (Phase 5): `oreQuantity` + aggregate `oreComposition`
+    bounded by `oreSiloCapacity` (`acceptOre` blends, `drainOre` removes,
+    `isOreSiloFull` gates mining back-pressure). The scene's `processOre()` drains
+    ore at `PROCESSING_RATE`, separates it into resources by composition
+    (`world/processing.ts`, pure/tested — conserves mass) into the resource silo,
+    and charges effective electricity + `processing-fee`; it pauses when the
+    resource silo is full (back-pressure chain: resource full → processing pauses →
+    ore silo fills → mining halts). `oreSilo` store drives the UI. Idle-safe: cost
+    only while consuming ore.
+  - Constants: `BASE_STORAGE_CAPACITY`, `SILO_CAPACITY_INCREMENT`, `ORE_SILO_CAPACITY`,
+    `ORE_SILO_INCREMENT`, `STARTING_CREDITS`,
     `SHIP_COMMISSION_COST`, `BASE_ORBIT_K` (and station purchase costs)
 
 - **Planet** `/src/entities/Planet.ts`
@@ -136,8 +146,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **GameSaveService** `/src/services/GameSaveService.ts`
   - Inputs: `SaveState` plain objects; localStorage
   - Outputs: `SaveState | null` from `load()`; persists to localStorage on `save()`
-  - Schema version: 26 (current); `migrate()` uses a fallthrough switch from v1→v26; each case upgrades one concern and falls through
-  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity`; v23 persists per-resource `marketPressure`; v24 persists per-lever infrastructure capacities; v25 persists top-level `marketEvents`; v26 adds asteroid `composition` (pure-dominant for legacy) + `scanned`. Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
+  - Schema version: 27 (current); `migrate()` uses a fallthrough switch from v1→v27; each case upgrades one concern and falls through
+  - Key migrations: v4 removed direct-mining fields + added attachment points; v6 split tetheredNets into a top-level cargoNets array; v11 cleared legacy `cargoContents`; v12+ added the Phase 3 fields (designations, station equipment, fuel/power, condition); v22 persists base `storageCapacity`; v23 persists per-resource `marketPressure`; v24 persists per-lever infrastructure capacities; v25 persists top-level `marketEvents`; v26 adds asteroid `composition` + `scanned`; v27 is the ore-pipeline cutover (net `composition` pure-from-resourceType, miner `activeComposition`, base raw-ore silo). Additive optional fields introduced later are loaded with `?? default` and do not require a schema bump.
 
 - **gameState** `/src/state/gameState.ts`
   - Type definitions only: `SaveState`, `ShipSnapshot`, `AutoMinerSnapshot`, `CargoNetSnapshot`, `AsteroidSnapshot`, `BaseSnapshot`
@@ -166,6 +176,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 - **baseStore** `/src/state/baseStore.ts`
   - Writable stores: `baseState: BaseState`, `basePanelOpen: boolean`, `stationUsage: StationUsage` (miner storage used/total; dock & hangar in-use/total/public — drives the Station Usage panel)
   - Economy stores (Phase 4): `resourceMarket` (per-resource current/baseline sell price), `infrastructure` (per-lever capacity/demand/effective-vs-base price), `activeMarketEvents` (HUD event list), `priceHistory` (per-resource bounded `{t,current,baseline}` series for the sparklines — **ephemeral, not persisted**)
+  - Industry stores (Phase 5): `oreSilo` (raw-ore quantity/capacity/composition + processing status)
 
 - **commandStore** `/src/state/commandStore.ts`
   - Writable store: `commandQueue: GameCommand[]`
@@ -321,7 +332,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 ### Save / load cycle
 ```
 1. SpaceScene.update(): autoSaveAccumulator += dt; when >= 10s → GameSaveService.save(buildSaveState())
-2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=26)
+2. buildSaveState(): snapshots all entities to plain SaveState object (schemaVersion=27)
 3. GameSaveService.save(): JSON.stringify(SaveState) → localStorage['dwa-save']
 4. On load: GameSaveService.load() → JSON.parse → migrate() fallthrough switch upgrades schema → return SaveState
 5. SpaceScene.loadFromSave(): re-creates all entity instances from snapshot data; restores timers and states

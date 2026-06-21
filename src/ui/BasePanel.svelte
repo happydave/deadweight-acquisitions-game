@@ -3,11 +3,12 @@
   import { resourceMarket } from '../state/marketStore'
   import { infrastructure, type LeverKey } from '../state/infrastructureStore'
   import { priceHistory } from '../state/metricsStore'
+  import { oreSilo } from '../state/oreSiloStore'
   import Sparkline from './Sparkline.svelte'
   import { commandQueue } from '../state/commandStore'
   import { selectedShip } from '../state/shipStore'
   import { type ResourceType } from '../world/worldConfig'
-  import { SHIP_COMMISSION_COST, SILO_CAPACITY_INCREMENT } from '../entities/Base'
+  import { SHIP_COMMISSION_COST, SILO_CAPACITY_INCREMENT, ORE_SILO_INCREMENT } from '../entities/Base'
   import { AUTOMINER_PURCHASE_COST, STATION_MINER_SLOT_CAP } from '../entities/AutoMiner'
   import {
     MAX_UPGRADE_LEVEL,
@@ -23,6 +24,7 @@
   const PRESS_COST   = getPrice('pressurization-upgrade')
   const SLOT_COST    = getPrice('station-miner-slot')
   const SILO_COST    = getPrice('silo-capacity-upgrade')
+  const ORE_SILO_COST = getPrice('ore-silo-capacity-upgrade')
 
   const FEE_CARGO_DROP  = getPrice('dock-cargo-drop')
   const FEE_HANGAR      = getPrice('hangar-service')
@@ -106,6 +108,12 @@
 
   $: siloFull = totalStored($baseState.storage) >= $baseState.storageCapacity
   $: canExpandSilo = $baseState.credits >= SILO_COST
+
+  function purchaseOreSiloCapacity(): void {
+    commandQueue.update(q => [...q, { type: 'purchaseOreSiloCapacity' }])
+  }
+  $: oreFull = $oreSilo.quantity >= $oreSilo.capacity
+  $: canExpandOre = $baseState.credits >= ORE_SILO_COST
 </script>
 
 {#if $basePanelOpen}
@@ -127,7 +135,7 @@
       </span>
     </div>
     {#if siloFull}
-      <div class="silo-warning">Silo full — mining halted. Sell or expand.</div>
+      <div class="silo-warning">Storage full — processing paused. Sell or expand.</div>
     {/if}
     <div class="row shipyard-row" class:disabled={!canExpandSilo}>
       <span class="label">Expand Silo</span>
@@ -136,6 +144,34 @@
         class="commission-btn"
         disabled={!canExpandSilo}
         on:click={purchaseSiloCapacity}
+      >Buy</button>
+    </div>
+
+    <!-- Ore & processing -->
+    <div class="section-title">ORE</div>
+    <div class="row" class:silo-full={oreFull}>
+      <span class="label">Raw ore</span>
+      <span class="value">
+        {Math.floor($oreSilo.quantity)} / {$oreSilo.capacity}
+        {#if oreFull}<span class="silo-full-tag">FULL</span>{/if}
+      </span>
+    </div>
+    <div class="row">
+      <span class="label">Processing</span>
+      <span class="value" class:depressed={$oreSilo.processing}>
+        {$oreSilo.processing ? 'refining…' : ($oreSilo.quantity > 0 ? 'paused (silo full)' : 'idle')}
+      </span>
+    </div>
+    {#if oreFull}
+      <div class="silo-warning">Ore silo full — mining halted. Process/sell to drain.</div>
+    {/if}
+    <div class="row shipyard-row" class:disabled={!canExpandOre}>
+      <span class="label">Expand Ore Silo</span>
+      <span class="price">+{ORE_SILO_INCREMENT}t · {ORE_SILO_COST}cr</span>
+      <button
+        class="commission-btn"
+        disabled={!canExpandOre}
+        on:click={purchaseOreSiloCapacity}
       >Buy</button>
     </div>
 

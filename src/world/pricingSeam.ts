@@ -10,6 +10,8 @@ export type PriceKey =
   | 'owned-hangar-purchase'
   | 'pressurization-upgrade'
   | 'silo-capacity-upgrade'
+  | 'ore-silo-capacity-upgrade'
+  | 'processing-fee'
 
 const PRICES: Record<PriceKey, number> = {
   'dock-refuel':                  20,
@@ -23,6 +25,8 @@ const PRICES: Record<PriceKey, number> = {
   'owned-hangar-purchase':       300,
   'pressurization-upgrade':      500,
   'silo-capacity-upgrade':       300,
+  'ore-silo-capacity-upgrade':   300,
+  'processing-fee':                1,  // per ore unit processed (public service)
 }
 
 export function getPrice(key: PriceKey): number {
