@@ -382,8 +382,12 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   non-negative silo/capacity/pressure, positive baseline, current ≤ baseline,
   active-event window validity — over-cap silo is legal and excluded), and the
   overlay shows an economy readout (prices, lever capacities, active events) near
-  the base. All Phase 4 economy logic lives in pure, unit-tested `world/` modules
-  (`market`, `infrastructure`, `marketEvents`, `history`, `economyInvariants`).
+  the base. The sweep also includes **industry invariants** (`world/industryInvariants.ts`,
+  pure/tested: non-negative ore, normalized ore/asteroid compositions, scan-queue
+  references valid), and the overlay readout adds ore level / probes / scanned
+  count. All Phase 4–5 economy/industry logic lives in pure, unit-tested `world/`
+  modules (`market`, `infrastructure`, `marketEvents`, `history`, `economyInvariants`,
+  `composition`, `processing`, `industryInvariants`).
 
 ---
 

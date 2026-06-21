@@ -97,6 +97,7 @@ import { currentPrice } from '../world/market'
 import { pushBounded } from '../world/history'
 import { priceHistory, type PriceSample } from '../state/metricsStore'
 import { checkEconomy } from '../world/economyInvariants'
+import { checkIndustry } from '../world/industryInvariants'
 import { separate, PROCESSING_RATE, PROCESSING_COST_FACTOR } from '../world/processing'
 import { oreSilo } from '../state/oreSiloStore'
 
@@ -1348,6 +1349,15 @@ export class SpaceScene extends Phaser.Scene {
     })
     for (const msg of econ) warn(msg)
 
+    // Industry invariants (Phase 5): ore silo, compositions, scan-queue integrity.
+    const industry = checkIndustry({
+      oreQuantity: this.base.oreQuantity,
+      oreComposition: this.base.oreComposition,
+      asteroids: this.asteroids.map(a => ({ id: a.id, composition: a.composition, scanned: a.scanned })),
+      scanDesignationAsteroidIds: this.designations.filter(d => d.kind === 'scan').map(d => d.asteroidId),
+    })
+    for (const msg of industry) warn(msg)
+
     // 7: owned-dock occupancy consistent with ships.
     for (let i = 0; i < this.slotOccupants.length; i++) {
       const occ = this.slotOccupants[i]
@@ -1417,7 +1427,7 @@ export class SpaceScene extends Phaser.Scene {
     for (const d of this.designations) {
       const ast = this.asteroidMap.get(d.asteroidId)
       if (!ast) continue
-      label(`d:${d.asteroidId}`, ast.x, ast.y + 14, `[${d.status}]`, '#88ffaa', true)
+      label(`d:${d.kind}:${d.asteroidId}`, ast.x, ast.y + 14, `[${d.kind[0]}:${d.status}]`, '#88ffaa', true)
     }
 
     // Economy readout near the base: per-resource price (current/baseline),
@@ -1429,7 +1439,9 @@ export class SpaceScene extends Phaser.Scene {
     const events = this.marketEvents.length > 0
       ? this.marketEvents.map(e => `${e.resourceType.slice(0, 2)}${e.type[0]}×${e.multiplier.toFixed(1)}`).join(' ')
       : 'none'
-    label('econ', this.base.x, this.base.y - 46, `${prices}\n${levers}\nev: ${events}`, '#ccbb77')
+    const scannedCount = this.asteroids.filter(a => a.scanned).length
+    const industry = `ore ${Math.floor(this.base.oreQuantity)}/${this.base.oreSiloCapacity}  probes ${this.base.scannerCount}  scanned ${scannedCount}/${this.asteroids.length}`
+    label('econ', this.base.x, this.base.y - 52, `${prices}\n${levers}\nev: ${events}\n${industry}`, '#ccbb77')
 
     for (const [key, t] of this.debugLabels) {
       if (!seen.has(key)) {
