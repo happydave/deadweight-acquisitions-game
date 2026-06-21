@@ -24,8 +24,8 @@ is the real gate for runtime wiring (Svelte/Phaser glue a type-check won't catch
 ## Architecture — read before editing
 
 `ARCHITECTURE.md` is the authoritative code-level map (component index, data flow,
-save schema, Phase 3 station systems + Phase 4 economy). Read its **Architectural
-Boundaries** section first;
+save schema, Phase 3 station systems + Phase 4 economy + Phase 5 industry). Read
+its **Architectural Boundaries** section first;
 the load-bearing invariants:
 
 - Svelte UI never holds Phaser object references — all entity→UI data flows through

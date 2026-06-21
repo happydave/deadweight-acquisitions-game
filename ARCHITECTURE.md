@@ -388,7 +388,9 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   references valid), and the overlay readout adds ore level / probes / scanned
   count. All Phase 4–5 economy/industry logic lives in pure, unit-tested `world/`
   modules (`market`, `infrastructure`, `marketEvents`, `history`, `economyInvariants`,
-  `composition`, `processing`, `industryInvariants`).
+  `composition`, `processing`, `industryInvariants`). Invariant warnings are also
+  recorded (deduped) in the `invariantLog` store, with HUD **Copy / Clear** buttons
+  (debug-only) to copy a timestamped report to the clipboard.
 
 ---
 
