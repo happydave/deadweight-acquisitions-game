@@ -2529,6 +2529,7 @@ export class SpaceScene extends Phaser.Scene {
     ship.isScanJob = false
     ship.asteroidTarget = null
     ship.target = null
+    ship.waitOrbitalAngle = null // reset park orbit used while scanning
     ship.shipState = 'idle'
     ship.pushToStore()
   }
@@ -3108,7 +3109,8 @@ export class SpaceScene extends Phaser.Scene {
         this.asteroidMap.has(ship.asteroidTarget.id) && (
           ship.shipState === 'waiting-at-asteroid' ||
           ship.shipState === 'collecting-nets' ||
-          ship.shipState === 'resupplying-miner'
+          ship.shipState === 'resupplying-miner' ||
+          ship.shipState === 'scanning'
         )
       ) {
         const ast = ship.asteroidTarget
