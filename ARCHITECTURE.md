@@ -133,7 +133,8 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
     `isOreSiloFull` gates mining back-pressure). The scene's `processOre()` drains
     ore at `PROCESSING_RATE`, separates it into resources by composition
     (`world/processing.ts`, pure/tested — conserves mass) into the resource silo,
-    and charges effective electricity + `processing-fee`; it pauses when the
+    and charges a flat `processing-fee` (1cr/unit, WI 568 — electricity term dropped
+    as a balance tweak); it pauses when the
     resource silo is full (back-pressure chain: resource full → processing pauses →
     ore silo fills → mining halts). `oreSilo` store drives the UI. Idle-safe: cost
     only while consuming ore.

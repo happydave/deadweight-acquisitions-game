@@ -11,9 +11,6 @@ const RESOURCE_TYPES: ResourceType[] = ['iron', 'ice', 'silicates', 'rare-metals
 /** Ore units processed per second by the (public) processing service. */
 export const PROCESSING_RATE = 8
 
-/** Multiplier on the refining charge (electricity + fee). <1 = a refining discount. */
-export const PROCESSING_COST_FACTOR = 0.8
-
 const EMPTY = (): Composition => ({ iron: 0, ice: 0, silicates: 0, 'rare-metals': 0 })
 
 /** Separates `oreQty` of ore into per-resource amounts by composition. Sum equals `oreQty`. */

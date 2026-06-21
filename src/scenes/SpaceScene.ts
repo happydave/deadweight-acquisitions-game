@@ -98,7 +98,7 @@ import { pushBounded } from '../world/history'
 import { priceHistory, type PriceSample } from '../state/metricsStore'
 import { checkEconomy } from '../world/economyInvariants'
 import { checkIndustry } from '../world/industryInvariants'
-import { separate, PROCESSING_RATE, PROCESSING_COST_FACTOR } from '../world/processing'
+import { separate, PROCESSING_RATE } from '../world/processing'
 import { oreSilo } from '../state/oreSiloStore'
 
 const METRICS_SAMPLE_INTERVAL = 1
@@ -2860,7 +2860,7 @@ export class SpaceScene extends Phaser.Scene {
     const drained = this.base.drainOre(PROCESSING_RATE * dt)
     if (drained <= 0) return false
     this.base.acceptCargo(separate(drained, composition))
-    this.base.credits -= drained * (this.effectiveElectricityPrice() + getPrice('processing-fee')) * PROCESSING_COST_FACTOR
+    this.base.credits -= drained * getPrice('processing-fee') // flat 1cr/unit (WI 568)
     this.base.pushToStore()
     return true
   }
