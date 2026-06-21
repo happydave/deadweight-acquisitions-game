@@ -1,6 +1,6 @@
 export type PriceKey =
-  | 'dock-refuel'
-  | 'dock-recharge'
+  | 'fuel-refuel'
+  | 'rcs-refuel'
   | 'dock-cargo-drop'
   | 'hangar-service'
   | 'repair-per-condition-point'
@@ -14,8 +14,8 @@ export type PriceKey =
   | 'processing-fee'
 
 const PRICES: Record<PriceKey, number> = {
-  'dock-refuel':                  20,
-  'dock-recharge':                15,
+  'fuel-refuel':                  20,  // credits for a full thruster-fuel tank (per-unit at point of refuel)
+  'rcs-refuel':                   10,  // credits for a full RCS tank (per-unit at point of refuel)
   'dock-cargo-drop':              10,
   'hangar-service':               50,
   'repair-per-condition-point':    5,

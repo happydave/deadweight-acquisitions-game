@@ -26,10 +26,10 @@
   const SILO_COST    = getPrice('silo-capacity-upgrade')
   const ORE_SILO_COST = getPrice('ore-silo-capacity-upgrade')
 
-  const FEE_CARGO_DROP  = getPrice('dock-cargo-drop')
+  const FEE_PUBLIC_DOCK = getPrice('dock-cargo-drop')
   const FEE_HANGAR      = getPrice('hangar-service')
-  const FEE_REFUEL      = getPrice('dock-refuel')
-  const FEE_RECHARGE    = getPrice('dock-recharge')
+  const FEE_FUEL        = getPrice('fuel-refuel')
+  const FEE_RCS         = getPrice('rcs-refuel')
   const FEE_REPAIR_PT   = getPrice('repair-per-condition-point')
   const FEE_ELECTRICITY = getPrice('electricity-per-battery-unit')
 
@@ -329,20 +329,20 @@
     <!-- Fees -->
     <div class="section-title">FEES</div>
     <div class="row fee-row">
-      <span class="label">Cargo drop</span>
-      <span class="fee-value">{FEE_CARGO_DROP}cr</span>
+      <span class="label">Public dock use</span>
+      <span class="fee-value">{FEE_PUBLIC_DOCK}cr</span>
     </div>
     <div class="row fee-row">
       <span class="label">Hangar service</span>
       <span class="fee-value">{FEE_HANGAR}cr</span>
     </div>
     <div class="row fee-row">
-      <span class="label">Refuel</span>
-      <span class="fee-value">{FEE_REFUEL}cr</span>
+      <span class="label">Fuel / full tank</span>
+      <span class="fee-value">{FEE_FUEL}cr</span>
     </div>
     <div class="row fee-row">
-      <span class="label">Recharge</span>
-      <span class="fee-value">{FEE_RECHARGE}cr</span>
+      <span class="label">RCS / full tank</span>
+      <span class="fee-value">{FEE_RCS}cr</span>
     </div>
     <div class="row fee-row">
       <span class="label">Repair</span>

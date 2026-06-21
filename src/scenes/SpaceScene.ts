@@ -923,7 +923,10 @@ export class SpaceScene extends Phaser.Scene {
       this.base.chargeDockFee(ship.dockIsPublic)
       this.releaseDockSlot(ship)
       if (ship.thrusterFuel < HAULER_FUEL_MAX || ship.rcsFuel < HAULER_RCS_MAX) {
-        this.base.credits -= this.effectiveRefuelPrice()
+        // Per-unit charge: pay in proportion to the fuel/RCS actually topped up.
+        const fuelCost = ((HAULER_FUEL_MAX - ship.thrusterFuel) / HAULER_FUEL_MAX) * this.effectiveFuelPrice()
+        const rcsCost = ((HAULER_RCS_MAX - ship.rcsFuel) / HAULER_RCS_MAX) * this.effectiveRcsPrice()
+        this.base.credits -= fuelCost + rcsCost
         this.base.pushToStore()
         ship.thrusterFuel = HAULER_FUEL_MAX
         ship.rcsFuel = HAULER_RCS_MAX
@@ -2703,8 +2706,14 @@ export class SpaceScene extends Phaser.Scene {
     return effectivePrice(getPrice('electricity-per-battery-unit'), this.base.solarCapacity, this.autoMiners.length)
   }
 
-  private effectiveRefuelPrice(): number {
-    return effectivePrice(getPrice('dock-refuel'), this.base.propellantCapacity, this.ships.length)
+  /** Effective price of a full thruster-fuel tank (per-unit at refuel; lowered by the propellant lever). */
+  private effectiveFuelPrice(): number {
+    return effectivePrice(getPrice('fuel-refuel'), this.base.propellantCapacity, this.ships.length)
+  }
+
+  /** Effective price of a full RCS tank (per-unit at refuel; lowered by the propellant lever). */
+  private effectiveRcsPrice(): number {
+    return effectivePrice(getPrice('rcs-refuel'), this.base.propellantCapacity, this.ships.length)
   }
 
   private effectiveRepairPrice(): number {
@@ -2776,7 +2785,7 @@ export class SpaceScene extends Phaser.Scene {
   private pushInfrastructureStore(): void {
     infrastructure.set({
       solar:      { capacity: this.base.solarCapacity,      demand: this.autoMiners.length, price: this.effectiveElectricityPrice(), base: getPrice('electricity-per-battery-unit') },
-      propellant: { capacity: this.base.propellantCapacity, demand: this.ships.length,      price: this.effectiveRefuelPrice(),      base: getPrice('dock-refuel') },
+      propellant: { capacity: this.base.propellantCapacity, demand: this.ships.length,      price: this.effectiveFuelPrice(),      base: getPrice('fuel-refuel') },
       foundry:    { capacity: this.base.foundryCapacity,    demand: this.autoMiners.length, price: this.effectiveRepairPrice(),      base: getPrice('repair-per-condition-point') },
     })
   }
