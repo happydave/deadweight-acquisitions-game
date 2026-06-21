@@ -98,6 +98,7 @@ import { pushBounded } from '../world/history'
 import { priceHistory, type PriceSample } from '../state/metricsStore'
 import { checkEconomy } from '../world/economyInvariants'
 import { checkIndustry } from '../world/industryInvariants'
+import { logInvariant } from '../state/invariantStore'
 import { separate, PROCESSING_RATE } from '../world/processing'
 import { oreSilo } from '../state/oreSiloStore'
 
@@ -1298,6 +1299,7 @@ export class SpaceScene extends Phaser.Scene {
     const warn = (msg: string) => {
       console.warn(`[invariant] ${msg}`)
       this.pushAttachNotification(`Invariant: ${msg}`, true)
+      logInvariant(msg, this.gameClock)
     }
 
     // 1 & 2: no miner / net id referenced by more than one slot.

@@ -5,6 +5,8 @@
   import { autoMinerSummary, activeBeacons, attachNotifications, minerAvailability } from '../state/autoMinerStore'
   import { activeMarketEvents } from '../state/marketEventStore'
   import { oreSilo } from '../state/oreSiloStore'
+  import { invariantLog } from '../state/invariantStore'
+  import { get } from 'svelte/store'
 
   let saveLabel = 'Save'
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -26,6 +28,15 @@
 
   $: siloFull = totalStored($baseState.storage) >= $baseState.storageCapacity
   $: oreFull = $oreSilo.quantity >= $oreSilo.capacity
+
+  function copyInvariants(): void {
+    const lines = get(invariantLog)
+    const header = `DWA invariant report — ${new Date().toISOString()} — ${lines.length} entries`
+    void navigator.clipboard?.writeText([header, ...lines].join('\n'))
+  }
+  function clearInvariants(): void {
+    invariantLog.set([])
+  }
 </script>
 
 <div class="hud">
@@ -131,6 +142,13 @@
       <button class="dispatch-btn" on:click={() => commandQueue.update(q => [...q, { type: 'respondToBeacon', minerId: beacon.id }])}>Dispatch</button>
     </div>
   {/each}
+  {#if $invariantLog.length > 0}
+    <div class="hud-row hud-section invariant-copy">
+      <span class="hud-key miner-stuck">⚠ Invariants ({$invariantLog.length})</span>
+      <button class="dispatch-btn" on:click={copyInvariants}>Copy</button>
+      <button class="dispatch-btn" on:click={clearInvariants}>Clear</button>
+    </div>
+  {/if}
   <div class="hud-row hud-section">
     <button class="save-btn" on:click={manualSave}>{saveLabel}</button>
   </div>
