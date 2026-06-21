@@ -3,7 +3,7 @@
   import { selectedAutoMiner } from '../state/autoMinerStore'
   import { selectedCargoNet } from '../state/cargoNetStore'
   import { commandQueue } from '../state/commandStore'
-  import { NET_CAPACITY, CONDITION_CAP_THRESHOLD, CONDITION_GRACE_THRESHOLD, MINER_BATTERY_MAX, MINER_RCS_MAX } from '../entities/AutoMiner'
+  import { NET_CAPACITY, CONDITION_CAP_THRESHOLD, CONDITION_GRACE_THRESHOLD, MINER_BATTERY_MAX } from '../entities/AutoMiner'
   import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities/Ship'
   import { designationQueue } from '../state/designationStore'
 
@@ -95,13 +95,6 @@
     </div>
     <div class="meter-track">
       <div class="meter-fill meter-battery" style="width: {$selectedAutoMiner.battery / MINER_BATTERY_MAX * 100}%"></div>
-    </div>
-    <div class="row meter-row">
-      <span class="label">RCS</span>
-      <span class="value">{Math.floor($selectedAutoMiner.rcsFuel)}/{MINER_RCS_MAX}</span>
-    </div>
-    <div class="meter-track">
-      <div class="meter-fill meter-rcs" style="width: {$selectedAutoMiner.rcsFuel / MINER_RCS_MAX * 100}%"></div>
     </div>
     {#if $selectedAutoMiner.state === 'net-starved'}
       <button

@@ -4,7 +4,7 @@ import { HAULER_FUEL_MAX, HAULER_RCS_MAX, HAULER_BATTERY_MAX } from '../entities
 import { BASE_STORAGE_CAPACITY, ORE_SILO_CAPACITY } from '../entities/Base'
 import { pureComposition } from '../world/composition'
 import type { ResourceType } from '../world/worldConfig'
-import { MINER_BATTERY_MAX, MINER_RCS_MAX } from '../entities/AutoMiner'
+import { MINER_BATTERY_MAX } from '../entities/AutoMiner'
 
 const SAVE_KEY = 'dwa-save'
 
@@ -261,7 +261,9 @@ function migrate(raw: SaveState): SaveState | null {
         autoMiners: (raw.autoMiners as unknown as Array<Record<string, unknown>>).map(m => ({
           ...m,
           battery: (m as { battery?: number }).battery ?? MINER_BATTERY_MAX,
-          rcsFuel: (m as { rcsFuel?: number }).rcsFuel ?? MINER_RCS_MAX,
+          // Miner RCS was removed (WI 558); this historical migration keeps adding the
+          // now-ignored field with its original default so the v19→v20 step is unchanged.
+          rcsFuel: (m as { rcsFuel?: number }).rcsFuel ?? 50,
         })),
       } as unknown as SaveState
       // falls through

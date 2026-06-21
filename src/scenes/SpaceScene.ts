@@ -58,8 +58,6 @@ import {
   MINER_REPAIR_DURATION_MS,
   MINER_BATTERY_MAX,
   MINER_BATTERY_DRAIN_BEACONING,
-  MINER_RCS_MAX,
-  MINER_RCS_DRAIN_PER_ATTACH,
   conditionPenaltyFraction,
   type AutoMinerState,
 } from '../entities/AutoMiner'
@@ -327,7 +325,6 @@ export class SpaceScene extends Phaser.Scene {
       miner.state = snap.state
       miner.condition = snap.condition ?? 1
       miner.battery = snap.battery ?? MINER_BATTERY_MAX
-      miner.rcsFuel = snap.rcsFuel ?? MINER_RCS_MAX
       miner.beaconReason = snap.beaconReason ?? null
       miner.activeResourceType = snap.activeResourceType ?? null
       miner.activeComposition = snap.activeComposition ?? null
@@ -638,7 +635,6 @@ export class SpaceScene extends Phaser.Scene {
         activeNetFill: m.activeNetFill,
         tetheredNetIds: [...m.tetheredNetIds],
         battery: m.battery,
-        rcsFuel: m.rcsFuel,
         beaconReason: m.beaconReason,
         activeResourceType: m.activeResourceType,
         activeComposition: m.activeComposition,
@@ -2093,8 +2089,6 @@ export class SpaceScene extends Phaser.Scene {
       this.retireDesignationsForAsteroid(asteroid.id)
       return
     }
-
-    miner.rcsFuel = Math.max(0, miner.rcsFuel - MINER_RCS_DRAIN_PER_ATTACH)
 
     const effectiveFailProb = ATTACH_FAILURE_PROB + CONDITION_MAX_PENALTY * conditionPenaltyFraction(miner.condition)
     if (Math.random() >= effectiveFailProb) {

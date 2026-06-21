@@ -49,8 +49,6 @@ export const MINER_REPAIR_DURATION_MS = 5000
 export const MINER_BATTERY_MAX = 200
 export const MINER_BATTERY_DRAIN_MINING = 2
 export const MINER_BATTERY_DRAIN_BEACONING = 0.05
-export const MINER_RCS_MAX = 50
-export const MINER_RCS_DRAIN_PER_ATTACH = 10
 // Battery fraction at which a mining miner starts beaconing for recovery while
 // still working, and the lower fraction at which it stops mining to preserve
 // reserve battery for the beacon.
@@ -119,7 +117,6 @@ export class AutoMiner extends Phaser.GameObjects.Image {
   freeOrbitalRadius: number | null = null
   freeOrbitalAngle: number | null = null
   battery: number
-  rcsFuel: number
   beaconReason: BeaconReason = null
   private beaconTimer: Phaser.Time.TimerEvent | null = null
 
@@ -134,7 +131,6 @@ export class AutoMiner extends Phaser.GameObjects.Image {
     this.tetheredNetIds = []
     this.technologyLevel = 1
     this.battery = MINER_BATTERY_MAX
-    this.rcsFuel = MINER_RCS_MAX
     this.isSelected = false
 
     scene.add.existing(this)
@@ -298,7 +294,6 @@ export class AutoMiner extends Phaser.GameObjects.Image {
       spareNetCount: this.spareNetCount,
       tetheredNetCount: this.tetheredNetIds.length,
       battery: this.battery,
-      rcsFuel: this.rcsFuel,
       beaconReason: this.beaconReason,
     })
   }

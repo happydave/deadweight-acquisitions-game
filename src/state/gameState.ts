@@ -45,7 +45,6 @@ export interface AutoMinerSnapshot {
   activeNetFill: number
   tetheredNetIds: string[]
   battery: number
-  rcsFuel: number
   beaconReason: BeaconReason
   activeResourceType: ResourceType | null
   activeComposition: Composition | null
