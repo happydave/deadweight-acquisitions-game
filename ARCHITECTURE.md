@@ -213,6 +213,14 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Seeded RNG utilities: `createRng(seed)`, `rngInt()`, `rngFloat()`, `rngWeighted()`
   - Tested independently: `/src/world/rng.test.ts`
 
+- **movement** `/src/world/movement.ts` (pure/tested, WI 581)
+  - `flybyScale(speedMultiplier, minSpeed, maxScale)`: hauler display-scale for the
+    fly-by "looming" effect — 1.0× at cruise → `maxScale` (1.5×) at full slowdown.
+  - `asteroidProximityRadius(baseRadius, size)`: per-asteroid slowdown radius scaled
+    by `SIZE_CONFIGS[size].scale` (small 60 / medium 120 / large 192; planet 600).
+  - Consumed by `SpaceScene.computeSpeedMultiplier` (size-scaled asteroid radius) and
+    the per-frame ship loop (`Ship.setFlybyScale` multiplies the spawn scale).
+
 - **Hud** `/src/ui/Hud.svelte`
   - Reads: `baseState`, `fleetSummary`, `autoMinerSummary`, `activeBeacons`, `attachNotifications`
   - Writes: `commandQueue` (manualSave)

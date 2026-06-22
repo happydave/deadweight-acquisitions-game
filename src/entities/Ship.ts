@@ -132,6 +132,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private rcsEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
   private rcsPuffCooldown = 0
   private artAngleOffset = 0  // render offset for atlas art orientation (0 for fallback)
+  private baseScale = 1       // spawn (1.0×) reference scale; fly-by looming multiplies this
   isSelected: boolean
 
   constructor(
@@ -174,8 +175,14 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       this.artAngleOffset = SHIP_ART_ANGLE_OFFSET
       this.setScale(SHIP_DISPLAY_LENGTH / this.height)
     }
+    this.baseScale = this.scaleX
     this.setAngle(this.heading + this.artAngleOffset)
     this.setInteractive()
+  }
+
+  /** Applies the fly-by looming factor on top of the spawn scale (1.0 = cruise). */
+  setFlybyScale(factor: number): void {
+    this.setScale(this.baseScale * factor)
   }
 
   issueMoveTo(worldX: number, worldY: number): void {

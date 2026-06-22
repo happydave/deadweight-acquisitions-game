@@ -85,6 +85,7 @@ import {
 } from '../state/autoMinerStore'
 import { GameSaveService } from '../services/GameSaveService'
 import { getPrice } from '../world/pricingSeam'
+import { flybyScale, asteroidProximityRadius } from '../world/movement'
 import { effectivePrice } from '../world/infrastructure'
 import { infrastructure } from '../state/infrastructureStore'
 import type { LeverKey } from '../entities/Base'
@@ -127,8 +128,10 @@ const SELECTION_RING_ALPHA = 0.8
 
 const PROXIMITY_PLANET_RADIUS = 600
 const PROXIMITY_BASE_RADIUS = 250
-const PROXIMITY_ASTEROID_RADIUS = 120
+const PROXIMITY_ASTEROID_RADIUS = 120  // base radius; scaled per-asteroid by size category
 const PROXIMITY_MIN_SPEED = 0.25
+// Fly-by "looming": a hauler scales up to this multiple of its spawn size at full slowdown.
+const SHIP_FLYBY_MAX_SCALE = 1.5
 
 const MINIMAP_SIZE = 180
 const MINIMAP_MARGIN = 10
@@ -1561,9 +1564,10 @@ export class SpaceScene extends Phaser.Scene {
     }
 
     for (const asteroid of this.asteroids) {
+      const radius = asteroidProximityRadius(PROXIMITY_ASTEROID_RADIUS, asteroid.sizeCategory)
       const dAst = Phaser.Math.Distance.Between(ship.x, ship.y, asteroid.x, asteroid.y)
-      if (dAst < PROXIMITY_ASTEROID_RADIUS) {
-        m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dAst / PROXIMITY_ASTEROID_RADIUS))
+      if (dAst < radius) {
+        m = Math.min(m, Math.max(PROXIMITY_MIN_SPEED, dAst / radius))
       }
     }
 
@@ -3150,6 +3154,7 @@ export class SpaceScene extends Phaser.Scene {
         }
       }
       ship.speedMultiplier = this.computeSpeedMultiplier(ship)
+      ship.setFlybyScale(flybyScale(ship.speedMultiplier, PROXIMITY_MIN_SPEED, SHIP_FLYBY_MAX_SCALE))
       ship.updateSteering(dt)
       ship.updateThrusters(dt)
       // Drive attach-maneuver progress onto the reserved miner slot (per-slot fill).
