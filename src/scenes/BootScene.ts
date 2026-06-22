@@ -6,7 +6,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // No assets in scaffolding — load path is structurally complete
+    // Generated ship atlas (asset-harness, Z-Image clean stack). Frames: 'hauler', 'miner'.
+    this.load.atlas('dwa_ships', 'assets/dwa_ships.png', 'assets/dwa_ships.json')
   }
 
   create(): void {

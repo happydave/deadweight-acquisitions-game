@@ -9,6 +9,13 @@ import { makeDefaultLoadout, type AttachmentPoint } from '../state/attachmentTyp
 import { MINER_DEPLOY_PROXIMITY } from './AutoMiner'
 
 export const SHIP_TEXTURE_KEY = 'ship'
+// Generated atlas (asset-harness). When loaded, the hauler renders from this instead of the
+// fallback triangle. The atlas art points "up"; in-game heading 0 = east, so a +90° render
+// offset is applied, and the large frame is scaled down to SHIP_DISPLAY_LENGTH.
+export const SHIP_ATLAS_KEY = 'dwa_ships'
+export const SHIP_ATLAS_FRAME = 'hauler'
+const SHIP_DISPLAY_LENGTH = 36   // px along the travel axis for the atlas sprite
+const SHIP_ART_ANGLE_OFFSET = 90 // atlas art faces up; heading 0 faces east
 export const SHIP_SPEED = 180          // world units per second
 export const SHIP_TURN_RATE = 180      // degrees per second
 export const ARRIVAL_RADIUS = 20       // world units — used for base arrival
@@ -124,6 +131,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private exhaustEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
   private rcsEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
   private rcsPuffCooldown = 0
+  private artAngleOffset = 0  // render offset for atlas art orientation (0 for fallback)
   isSelected: boolean
 
   constructor(
@@ -135,7 +143,11 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     base: Base,
     id?: string,
   ) {
-    super(scene, x, y, SHIP_TEXTURE_KEY)
+    super(
+      scene, x, y,
+      scene.textures.exists(SHIP_ATLAS_KEY) ? SHIP_ATLAS_KEY : SHIP_TEXTURE_KEY,
+      scene.textures.exists(SHIP_ATLAS_KEY) ? SHIP_ATLAS_FRAME : undefined,
+    )
     this.id = id ?? nanoid()
     this.shipName = name
     this.cargoCapacity = CARGO_CAPACITY_TIERS[0]
@@ -158,6 +170,11 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this)
     scene.physics.add.existing(this)
     this.setOrigin(0.5, 0.5)
+    if (this.texture.key === SHIP_ATLAS_KEY) {
+      this.artAngleOffset = SHIP_ART_ANGLE_OFFSET
+      this.setScale(SHIP_DISPLAY_LENGTH / this.height)
+    }
+    this.setAngle(this.heading + this.artAngleOffset)
     this.setInteractive()
   }
 
@@ -316,7 +333,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     this.heading = Phaser.Math.Angle.WrapDegrees(
       this.heading + Phaser.Math.Clamp(diff, -maxTurn, maxTurn)
     )
-    this.setAngle(this.heading)
+    this.setAngle(this.heading + this.artAngleOffset)
     this.scene.physics.velocityFromAngle(this.heading, SHIP_SPEED * this.speedMultiplier, this.body!.velocity)
   }
 
