@@ -51,7 +51,36 @@ export function generateBaseTexture(scene: Phaser.Scene): void {
   gfx.destroy()
 }
 
-export class Base extends Phaser.GameObjects.Image {
+// --- Modular station art (asset-harness `dwa_station` atlas; 160px square cells) ---
+// The base renders as a central `hub` plus four radiating modules. Each radiating
+// module is shown only when its backing infrastructure is owned, so the station
+// visibly grows as the player invests.
+export const STATION_ATLAS_KEY = 'dwa_station'
+const MODULE_DISPLAY = 44                     // on-screen px per 160px cell
+const MODULE_SCALE = MODULE_DISPLAY / 160
+const CELL = MODULE_DISPLAY                    // adjacent-cell centre offset (edges touch)
+// Hit-area radius (container-local px) covering the whole assembly so a click
+// anywhere on the station selects the base, not just the hub centre.
+const STATION_HIT_RADIUS = CELL + MODULE_DISPLAY / 2 + 6
+
+interface ModuleDef {
+  frame: string
+  dx: number
+  dy: number
+  angle: number                               // rotation so the module's port faces the hub (tunable, visual-verified)
+  isVisible: (b: Base) => boolean
+}
+
+// Layout mirrors samples-2026-06-21-station/base_layout.png: solar N, dock S,
+// tank W, habitat E. Angles are best-guess and confirmed during visual checkpoint.
+const STATION_MODULES: ModuleDef[] = [
+  { frame: 'solar',   dx: 0,     dy: -CELL, angle: 0,   isVisible: b => b.solarCapacity > 0 },
+  { frame: 'dock',    dx: 0,     dy: CELL,  angle: 0,   isVisible: b => b.ownedDockCount > 0 },
+  { frame: 'tank',    dx: -CELL, dy: 0,     angle: 90,  isVisible: b => b.propellantCapacity > 0 },
+  { frame: 'habitat', dx: CELL,  dy: 0,     angle: -90, isVisible: b => b.ownedHangarCount > 0 },
+]
+
+export class Base extends Phaser.GameObjects.Container {
   storageCapacity: number
   storage: Partial<Record<ResourceType, number>>
   credits: number
@@ -72,9 +101,11 @@ export class Base extends Phaser.GameObjects.Image {
   oreComposition: Composition
   oreSiloCapacity: number
   scannerCount: number
+  // Radiating-module sprites paired with their ownership predicate; toggled in pushToStore.
+  private moduleSync: { sprite: Phaser.GameObjects.Image; isVisible: () => boolean }[] = []
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, BASE_TEXTURE_KEY)
+    super(scene, x, y)
     // Orbit the planet (world center) through the construction point.
     this.orbitalRadius = Math.max(Math.hypot(x, y), 1)
     this.orbitalAngle = Math.atan2(y, x)
@@ -101,13 +132,44 @@ export class Base extends Phaser.GameObjects.Image {
     this.oreComposition = { ...EMPTY_COMPOSITION }
     this.oreSiloCapacity = ORE_SILO_CAPACITY
     this.scannerCount = 0
+    this.buildStation(scene)
     scene.add.existing(this)
+    // Container-local hit area covers the whole assembly, so clicking any module
+    // (not just the hub) selects the base.
     this.setInteractive(
-      new Phaser.Geom.Circle(TEXTURE_CX, TEXTURE_CY, OUTER_R),
+      new Phaser.Geom.Circle(0, 0, STATION_HIT_RADIUS),
       Phaser.Geom.Circle.Contains,
     )
     this.pushToStore()
     this.pushMarketToStore()
+  }
+
+  /**
+   * Builds the station as child sprites of this container. When the generated
+   * atlas is present, renders hub + four radiating modules; otherwise falls back
+   * to the programmatic circle so the base always renders and stays selectable.
+   */
+  private buildStation(scene: Phaser.Scene): void {
+    if (!scene.textures.exists(STATION_ATLAS_KEY)) {
+      this.add(scene.make.image({ x: 0, y: 0, key: BASE_TEXTURE_KEY, add: false }))
+      return
+    }
+    const hub = scene.make.image({ x: 0, y: 0, key: STATION_ATLAS_KEY, frame: 'hub', add: false })
+    hub.setScale(MODULE_SCALE)
+    this.add(hub)
+    for (const m of STATION_MODULES) {
+      const sprite = scene.make.image({ x: m.dx, y: m.dy, key: STATION_ATLAS_KEY, frame: m.frame, add: false })
+      sprite.setScale(MODULE_SCALE)
+      sprite.setAngle(m.angle)
+      sprite.setVisible(m.isVisible(this))
+      this.add(sprite)
+      this.moduleSync.push({ sprite, isVisible: () => m.isVisible(this) })
+    }
+  }
+
+  /** Re-evaluates each radiating module's visibility against current ownership. */
+  private syncModules(): void {
+    for (const m of this.moduleSync) m.sprite.setVisible(m.isVisible())
   }
 
   /** Advances the base along its orbit and repositions it (planet at world center). */
@@ -322,6 +384,7 @@ export class Base extends Phaser.GameObjects.Image {
   }
 
   pushToStore(): void {
+    this.syncModules()
     baseState.set({
       storage: { ...this.storage },
       storageCapacity: this.storageCapacity,

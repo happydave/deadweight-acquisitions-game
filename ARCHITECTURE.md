@@ -31,7 +31,9 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Creates Phaser.Game with scenes [BootScene, MainMenuScene, SpaceScene] and RESIZE scale mode; mounts Svelte UI overlay onto `#hud`
 
 - **BootScene** `/src/scenes/BootScene.ts`
-  - Inputs: none (no assets to preload in current build)
+  - Inputs: preloads the generated asset-harness atlases — `dwa_ships`
+    (frames `hauler`, `miner`) and `dwa_station` (frames `hub`, `tank`,
+    `habitat`, `solar`, `dock`). Both Apache/MIT (Z-Image clean stack).
   - Outputs: transitions to MainMenuScene
 
 - **MainMenuScene** `/src/scenes/MainMenuScene.ts`
@@ -86,7 +88,17 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Free-orbit fields (`freeOrbitalRadius`/`freeOrbitalAngle`) + `designatedForCollection`: when a miner is recovered without all its nets, the leftover nets are orphaned to free-orbit and stay recoverable via the player "designate for collection" action (never destroyed)
   - Constants: `NET_LEAKAGE_FRACTION=0.05` (quantity loss on collection), `NET_COLLECT_DURATION_MS=1500`
 
-- **Base** `/src/entities/Base.ts` — `Phaser.GameObjects.Image`
+- **Base** `/src/entities/Base.ts` — `Phaser.GameObjects.Container`
+  - **Modular station render (WI 580):** the base is a container composed from the
+    `dwa_station` atlas — a central `hub` child plus four radiating module sprites
+    (`solar` N, `tank` W, `habitat` E, `dock` S). Each radiating module is
+    **ownership-driven**: shown iff its backing field is `> 0` (`solarCapacity`,
+    `propellantCapacity`, `ownedHangarCount`, `ownedDockCount`), re-evaluated by
+    `syncModules()` on every `pushToStore()`. Visibility derives from
+    already-persisted fields — **no save-schema change**. A container-local circular
+    hit-area covers the whole assembly so any module click selects the base; orbit
+    moves the container and children inherit the transform. Falls back to the
+    procedural `BASE_TEXTURE_KEY` circle child if the atlas is absent.
   - Inputs: `acceptCargo()`, `sellResource()`, `commissionShip()`, `storeAutoMiner()`, station purchases (owned docks/hangars/miner slots, pressurization) from SpaceScene
   - Outputs: `baseState` store via `pushToStore()` (storage, credits, fleet size, station miner count/slots, owned dock/hangar counts, pressurization, autoDesignate)
   - **Orbits the planet**: `orbitalRadius`/`orbitalAngle` + `advanceOrbit(dt)`
@@ -279,7 +291,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 3. MainMenuScene.create(): GameSaveService.hasSave() determines button layout
 4. Player clicks CONTINUE or NEW GAME → SpaceScene starts
 5. SpaceScene.create():
-   a. Textures generated (asteroids, ship, miner, net, base — all procedural via Graphics)
+   a. Textures generated (asteroids, miner, net, base-fallback circle — procedural via Graphics); the hauler and the base station render from the preloaded `dwa_ships` / `dwa_station` atlases when present (procedural fallback otherwise)
    b. GameSaveService.load() → if save exists: loadFromSave(save); else: spawnWorld() using worldGenerator.generateWorld(worldSeed)
    c. Camera configured; input handlers attached; beforeunload handler registered
 ```
