@@ -93,8 +93,8 @@ export function generateParticleTexture(scene: Phaser.Scene): void {
 }
 
 // Exhaust plume geometry/timing.
-const EXHAUST_OFFSET = 12        // world units behind the hull center
-const EXHAUST_SPREAD = 12        // degrees of cone half-angle
+const EXHAUST_OFFSET = 24        // world units behind the hull center (plume sits further back)
+const EXHAUST_SPREAD = 5         // degrees of cone half-angle (tight = slim plume)
 // RCS puff timing/geometry.
 const RCS_PUFF_INTERVAL = 0.28   // seconds between maneuvering puffs
 const RCS_FLANK_OFFSET = 7       // world units to the side of the hull
@@ -520,13 +520,14 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     if (this.scene.textures.exists(FLAME_TEXTURE_KEY)) {
       // Generated flame sprite: pre-coloured, so no tint; scale retuned for the 128px texture.
       this.exhaustEmitter = this.scene.add.particles(0, 0, FLAME_TEXTURE_KEY, {
-        lifespan: 480,
-        speed: { min: 25, max: 65 },
-        scale: { start: 0.34, end: 0.04 },
+        // Tall, slim plume: small fast puffs, long-lived, in a tight cone -> a long narrow stream.
+        lifespan: 650,
+        speed: { min: 80, max: 150 },
+        scale: { start: 0.20, end: 0.03 },
         alpha: { start: 0.95, end: 0 },
         rotate: { min: 0, max: 360 },
         blendMode: 'ADD',
-        frequency: 26,
+        frequency: 16,
         quantity: 1,
         emitting: false,
       })
