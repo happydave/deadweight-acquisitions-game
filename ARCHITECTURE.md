@@ -32,8 +32,10 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **BootScene** `/src/scenes/BootScene.ts`
   - Inputs: preloads the generated asset-harness atlases — `dwa_ships`
-    (frames `hauler`, `miner`) and `dwa_station` (frames `hub`, `tank`,
-    `habitat`, `solar`, `dock`). Both Apache/MIT (Z-Image clean stack).
+    (frames `hauler`, `miner`), `dwa_station` (frames `hub`, `tank`, `habitat`,
+    `solar`, `dock`), `dwa_asteroids` (frames `iron`, `ice`, `silicates`,
+    `rare-metals`, `unknown`), and `dwa_planet` (frame `planet`). All Apache/MIT
+    (Z-Image clean stack).
   - Outputs: transitions to MainMenuScene
 
 - **MainMenuScene** `/src/scenes/MainMenuScene.ts`
@@ -61,6 +63,11 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
   - Takes plain data / predicate closures; the scene applies the returned decisions
 
 - **Asteroid** `/src/entities/Asteroid.ts`
+  - Renders the generated `dwa_asteroids` atlas frame for its `resourceType`
+    (WI 585; `unknown` frame reserved for scan-gating WI 586); falls back to the
+    procedural `asteroid-<type>` circle. A `ASTEROID_TEXTURE_SIZE/max(w,h)` art
+    factor folded into `baseScale` keeps the prior on-screen size, so depletion
+    scaling and the fixed-radius company ring are unchanged.
   - Inputs: `AsteroidData` (from worldGenerator), per-frame orbital angle update from SpaceScene
   - Outputs: `selectedAsteroid` store (when selected); emits `'asteroid-selected'` event; `currentQuantity` consumed by AutoMiner
   - Maintains Keplerian orbit: `angle += ORBITAL_K / radius^1.5 * dt`
@@ -155,7 +162,10 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
     `SHIP_COMMISSION_COST`, `BASE_ORBIT_K` (and station purchase costs)
 
 - **Planet** `/src/entities/Planet.ts`
-  - Visual-only; procedurally textured; at world origin; no game logic
+  - Visual-only; at world origin; no game logic. Renders the generated `dwa_planet`
+    sprite (WI 584) sized to `PLANET_RADIUS` and slowly z-rotating (looping tween;
+    off-centre storm makes the spin read); procedural-texture fallback. Rotation is
+    cosmetic — the slowdown uses the separate `PROXIMITY_PLANET_RADIUS`.
 
 - **GameSaveService** `/src/services/GameSaveService.ts`
   - Inputs: `SaveState` plain objects; localStorage
@@ -299,7 +309,7 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 3. MainMenuScene.create(): GameSaveService.hasSave() determines button layout
 4. Player clicks CONTINUE or NEW GAME → SpaceScene starts
 5. SpaceScene.create():
-   a. Textures generated (asteroids, miner, net, base-fallback circle — procedural via Graphics); the hauler and the base station render from the preloaded `dwa_ships` / `dwa_station` atlases when present (procedural fallback otherwise)
+   a. Procedural textures generated as fallbacks (miner, net, base circle, asteroid circles, planet); when the preloaded atlases are present the hauler (`dwa_ships`), base station (`dwa_station`), asteroids (`dwa_asteroids`), and planet (`dwa_planet`) render from them instead
    b. GameSaveService.load() → if save exists: loadFromSave(save); else: spawnWorld() using worldGenerator.generateWorld(worldSeed)
    c. Camera configured; input handlers attached; beforeunload handler registered
 ```

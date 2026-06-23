@@ -10,6 +10,8 @@ export class BootScene extends Phaser.Scene {
     this.load.atlas('dwa_ships', 'assets/dwa_ships.png', 'assets/dwa_ships.json')
     // Generated station module atlas (asset-harness). Frames: 'hub', 'tank', 'habitat', 'solar', 'dock'.
     this.load.atlas('dwa_station', 'assets/dwa_station.png', 'assets/dwa_station.json')
+    // Generated asteroid atlas (asset-harness). Frames: 'iron','ice','silicates','rare-metals','unknown'.
+    this.load.atlas('dwa_asteroids', 'assets/dwa_asteroids.png', 'assets/dwa_asteroids.json')
   }
 
   create(): void {

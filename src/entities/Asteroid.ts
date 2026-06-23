@@ -5,6 +5,10 @@ import type { AsteroidData } from '../world/worldGenerator'
 import { selectedAsteroid } from '../state/shipStore'
 import { get } from 'svelte/store'
 
+// Generated per-resource asteroid atlas (asset-harness). Frames are named by resource type
+// ('iron'|'ice'|'silicates'|'rare-metals', plus 'unknown' reserved for scan-gating, WI 586).
+export const ASTEROID_ATLAS_KEY = 'dwa_asteroids'
+
 const COMPANY_RING_RADIUS = ASTEROID_TEXTURE_SIZE * 1.2  // slightly larger than the largest visual
 const COMPANY_RING_COLOR = 0x44ffdd
 const COMPANY_RING_ALPHA = 0.85
@@ -26,7 +30,11 @@ export class Asteroid extends Phaser.GameObjects.Image {
   private companyRing: Phaser.GameObjects.Graphics | null = null
 
   constructor(scene: Phaser.Scene, data: AsteroidData) {
-    super(scene, 0, 0, `asteroid-${data.resourceType}`)
+    super(
+      scene, 0, 0,
+      scene.textures.exists(ASTEROID_ATLAS_KEY) ? ASTEROID_ATLAS_KEY : `asteroid-${data.resourceType}`,
+      scene.textures.exists(ASTEROID_ATLAS_KEY) ? data.resourceType : undefined,
+    )
     this.id = data.id
     this.resourceType = data.resourceType
     this.composition = data.composition
@@ -37,7 +45,10 @@ export class Asteroid extends Phaser.GameObjects.Image {
     this.isCompany = data.isCompany
     this.orbitalRadius = data.orbitalRadius
     this.orbitalAngle = data.orbitalAngle
-    this.baseScale = SIZE_CONFIGS[data.sizeCategory].scale
+    // Fold a (32px → frame) art factor in so the generated sprite renders at the same
+    // on-screen size as the old procedural 32px circle (factor = 1 for the fallback).
+    const artFactor = ASTEROID_TEXTURE_SIZE / Math.max(this.width, this.height)
+    this.baseScale = SIZE_CONFIGS[data.sizeCategory].scale * artFactor
     const depletionRatio = data.maxQuantity > 0 ? data.currentQuantity / data.maxQuantity : 1
     this.setScale(this.baseScale * Math.max(DEPLETION_SCALE_MIN, depletionRatio))
     this.x = Math.cos(this.orbitalAngle) * this.orbitalRadius
