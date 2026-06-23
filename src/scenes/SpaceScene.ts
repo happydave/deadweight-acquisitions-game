@@ -132,6 +132,8 @@ const PROXIMITY_ASTEROID_RADIUS = 120  // base radius; scaled per-asteroid by si
 const PROXIMITY_MIN_SPEED = 0.25
 // Fly-by "looming": a hauler scales up to this multiple of its spawn size at full slowdown.
 const SHIP_FLYBY_MAX_SCALE = 1.5
+// Auto-follow camera smoothing (0..1): gentle glide to the followed entity, not an instant snap.
+const FOLLOW_LERP = 0.12
 
 const MINIMAP_SIZE = 180
 const MINIMAP_MARGIN = 10
@@ -199,6 +201,7 @@ export class SpaceScene extends Phaser.Scene {
   }
   private companyArrivalAccumulator = 0
   private followCam = false
+  private followTarget: (Phaser.GameObjects.GameObject & { x: number; y: number }) | null = null
   private minimap!: Phaser.GameObjects.Graphics
   // Service-slot / hangar geometry stored as offsets from the base center; live
   // positions = base position + offset (the base orbits, so these are dynamic).
@@ -1501,6 +1504,7 @@ export class SpaceScene extends Phaser.Scene {
     this.selectionRing.setDepth(ship.depth - 1)
     this.drawSelectionRing()
     ship.select()
+    this.followEntity(ship)
   }
 
   private clearSelection(): void {
@@ -1537,16 +1541,24 @@ export class SpaceScene extends Phaser.Scene {
 
   private toggleFollowCam(): void {
     if (!this.selectedShip) return
-    if (this.followCam) {
-      this.cancelFollowCam()
-    } else {
-      this.followCam = true
-      this.cameras.main.startFollow(this.selectedShip, false, 1, 1)
-    }
+    if (this.followCam) this.cancelFollowCam()
+    else this.followEntity(this.selectedShip)
+  }
+
+  /** Locks the camera onto an entity and releases automatically if it despawns. */
+  private followEntity(target: Phaser.GameObjects.GameObject & { x: number; y: number }): void {
+    this.followCam = true
+    this.followTarget = target
+    this.cameras.main.startFollow(target, false, FOLLOW_LERP, FOLLOW_LERP)
+    // Defensive: if the followed entity is ever destroyed, release rather than strand the camera.
+    target.once(Phaser.GameObjects.Events.DESTROY, () => {
+      if (this.followTarget === target) this.cancelFollowCam()
+    })
   }
 
   private cancelFollowCam(): void {
     this.followCam = false
+    this.followTarget = null
     this.cameras.main.stopFollow()
   }
 
@@ -2721,6 +2733,7 @@ export class SpaceScene extends Phaser.Scene {
                     this.selectedAutoMinerEntity = null
                   }
                   basePanelOpen.set(true)
+                  this.followEntity(this.base)
                 } else {
                   const hitAsteroid = targets.find(t => t instanceof Asteroid) as Asteroid | undefined
                   if (hitAsteroid) {
