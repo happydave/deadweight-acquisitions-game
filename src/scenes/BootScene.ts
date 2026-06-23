@@ -14,6 +14,8 @@ export class BootScene extends Phaser.Scene {
     this.load.atlas('dwa_asteroids', 'assets/dwa_asteroids.png', 'assets/dwa_asteroids.json')
     // Generated planet sprite (asset-harness). Single frame 'planet'.
     this.load.atlas('dwa_planet', 'assets/dwa_planet.png', 'assets/dwa_planet.json')
+    // Generated flame sprite (asset-harness vfx, additive on black) for the thruster plume.
+    this.load.image('fx-flame', 'assets/fx_flame.png')
   }
 
   create(): void {

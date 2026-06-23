@@ -71,6 +71,9 @@ export function generateShipTexture(scene: Phaser.Scene): void {
 }
 
 export const PARTICLE_TEXTURE_KEY = 'fx-particle'
+// Generated flame sprite (asset-harness vfx) for the thruster plume; additive on black, so it
+// drops onto the ADD-blend emitter directly. Falls back to the procedural dot if absent.
+export const FLAME_TEXTURE_KEY = 'fx-flame'
 
 /** Soft round dot used (tinted) for both thruster exhaust and RCS puffs. */
 export function generateParticleTexture(scene: Phaser.Scene): void {
@@ -514,17 +517,32 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private ensureEmitters(): void {
     if (this.exhaustEmitter !== null) return
     if (!this.scene.textures.exists(PARTICLE_TEXTURE_KEY)) return
-    this.exhaustEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
-      lifespan: 420,
-      speed: { min: 30, max: 70 },
-      scale: { start: 0.55, end: 0 },
-      alpha: { start: 0.85, end: 0 },
-      tint: [0xffffff, 0xffd27f, 0xff8a3c],
-      blendMode: 'ADD',
-      frequency: 28,
-      quantity: 1,
-      emitting: false,
-    })
+    if (this.scene.textures.exists(FLAME_TEXTURE_KEY)) {
+      // Generated flame sprite: pre-coloured, so no tint; scale retuned for the 128px texture.
+      this.exhaustEmitter = this.scene.add.particles(0, 0, FLAME_TEXTURE_KEY, {
+        lifespan: 480,
+        speed: { min: 25, max: 65 },
+        scale: { start: 0.34, end: 0.04 },
+        alpha: { start: 0.95, end: 0 },
+        rotate: { min: 0, max: 360 },
+        blendMode: 'ADD',
+        frequency: 26,
+        quantity: 1,
+        emitting: false,
+      })
+    } else {
+      this.exhaustEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
+        lifespan: 420,
+        speed: { min: 30, max: 70 },
+        scale: { start: 0.55, end: 0 },
+        alpha: { start: 0.85, end: 0 },
+        tint: [0xffffff, 0xffd27f, 0xff8a3c],
+        blendMode: 'ADD',
+        frequency: 28,
+        quantity: 1,
+        emitting: false,
+      })
+    }
     this.exhaustEmitter.setDepth(this.depth - 1)
     this.rcsEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
       lifespan: 260,
