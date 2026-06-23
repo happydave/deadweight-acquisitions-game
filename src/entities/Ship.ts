@@ -94,7 +94,9 @@ export function generateParticleTexture(scene: Phaser.Scene): void {
 
 // Exhaust plume geometry/timing.
 const EXHAUST_OFFSET = 24        // world units behind the hull center (plume sits further back)
-const EXHAUST_SPREAD = 5         // degrees of cone half-angle (tight = slim plume)
+const EXHAUST_SPREAD = 5         // degrees of cone half-angle (fallback soft-dot emitter only)
+const PLUME_LENGTH = 72          // billboard plume length (world units) behind the nozzle
+const PLUME_WIDTH = 15           // billboard plume width (world units) — slim
 // RCS puff timing/geometry.
 const RCS_PUFF_INTERVAL = 0.28   // seconds between maneuvering puffs
 const RCS_FLANK_OFFSET = 7       // world units to the side of the hull
@@ -132,6 +134,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   private attachUnloadGfx: Phaser.GameObjects.Graphics | null = null
   private slotGfx: Phaser.GameObjects.Graphics | null = null
   private exhaustEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
+  private exhaustPlume: Phaser.GameObjects.Image | null = null
   private rcsEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null
   private rcsPuffCooldown = 0
   private artAngleOffset = 0  // render offset for atlas art orientation (0 for fallback)
@@ -503,6 +506,10 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
       this.slotGfx.destroy()
       this.slotGfx = null
     }
+    if (this.exhaustPlume !== null) {
+      this.exhaustPlume.destroy()
+      this.exhaustPlume = null
+    }
     if (this.exhaustEmitter !== null) {
       this.exhaustEmitter.destroy()
       this.exhaustEmitter = null
@@ -515,23 +522,19 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
   }
 
   private ensureEmitters(): void {
-    if (this.exhaustEmitter !== null) return
+    if (this.exhaustPlume !== null || this.exhaustEmitter !== null) return
     if (!this.scene.textures.exists(PARTICLE_TEXTURE_KEY)) return
     if (this.scene.textures.exists(FLAME_TEXTURE_KEY)) {
-      // Generated flame sprite: pre-coloured, so no tint; scale retuned for the 128px texture.
-      this.exhaustEmitter = this.scene.add.particles(0, 0, FLAME_TEXTURE_KEY, {
-        // Tall, slim plume: small fast puffs, long-lived, in a tight cone -> a long narrow stream.
-        lifespan: 650,
-        speed: { min: 80, max: 150 },
-        scale: { start: 0.20, end: 0.03 },
-        alpha: { start: 0.95, end: 0 },
-        rotate: { min: 0, max: 360 },
-        blendMode: 'ADD',
-        frequency: 16,
-        quantity: 1,
-        emitting: false,
-      })
+      // Generated flame as a stretched additive billboard: a directional jet straight out the
+      // back (not a radial puff). Origin near the hot end so it attaches at the nozzle.
+      this.exhaustPlume = this.scene.add
+        .image(0, 0, FLAME_TEXTURE_KEY)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setOrigin(0.5, 0.15)
+        .setVisible(false)
+        .setDepth(this.depth - 1)
     } else {
+      // Fallback: the procedural soft-dot exhaust (tinted) when the flame sprite is absent.
       this.exhaustEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
         lifespan: 420,
         speed: { min: 30, max: 70 },
@@ -543,8 +546,8 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
         quantity: 1,
         emitting: false,
       })
+      this.exhaustEmitter.setDepth(this.depth - 1)
     }
-    this.exhaustEmitter.setDepth(this.depth - 1)
     this.rcsEmitter = this.scene.add.particles(0, 0, PARTICLE_TEXTURE_KEY, {
       lifespan: 260,
       speed: { min: 10, max: 30 },
@@ -565,7 +568,7 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
    */
   updateThrusters(dt: number): void {
     this.ensureEmitters()
-    if (this.exhaustEmitter === null || this.rcsEmitter === null) return
+    if (this.rcsEmitter === null) return
 
     const rad = Phaser.Math.DegToRad(this.heading)
 
@@ -573,12 +576,24 @@ export class Ship extends Phaser.Physics.Arcade.Sprite {
     if (this.inTransit()) {
       const rearX = this.x - Math.cos(rad) * EXHAUST_OFFSET
       const rearY = this.y - Math.sin(rad) * EXHAUST_OFFSET
-      this.exhaustEmitter.setPosition(rearX, rearY)
-      const back = this.heading + 180
-      this.exhaustEmitter.setEmitterAngle({ min: back - EXHAUST_SPREAD, max: back + EXHAUST_SPREAD })
-      this.exhaustEmitter.emitting = true
+      if (this.exhaustPlume !== null) {
+        // Directional billboard: local +Y points along (heading+180), i.e. straight out the back;
+        // flicker the length a little for life.
+        const flick = 0.8 + Math.random() * 0.35
+        this.exhaustPlume.setPosition(rearX, rearY)
+        this.exhaustPlume.setAngle(this.heading + 90)
+        this.exhaustPlume.setDisplaySize(PLUME_WIDTH, PLUME_LENGTH * flick)
+        this.exhaustPlume.setAlpha(0.8 + Math.random() * 0.2)
+        this.exhaustPlume.setVisible(true)
+      } else if (this.exhaustEmitter !== null) {
+        this.exhaustEmitter.setPosition(rearX, rearY)
+        const back = this.heading + 180
+        this.exhaustEmitter.setEmitterAngle({ min: back - EXHAUST_SPREAD, max: back + EXHAUST_SPREAD })
+        this.exhaustEmitter.emitting = true
+      }
     } else {
-      this.exhaustEmitter.emitting = false
+      if (this.exhaustPlume !== null) this.exhaustPlume.setVisible(false)
+      if (this.exhaustEmitter !== null) this.exhaustEmitter.emitting = false
     }
 
     // Intermittent RCS puffs from a flank while maneuvering on RCS.
