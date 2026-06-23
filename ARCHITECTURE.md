@@ -64,10 +64,18 @@ Required:  save schema migrations use a fallthrough switch in GameSaveService.mi
 
 - **Asteroid** `/src/entities/Asteroid.ts`
   - Renders the generated `dwa_asteroids` atlas frame for its `resourceType`
-    (WI 585; `unknown` frame reserved for scan-gating WI 586); falls back to the
-    procedural `asteroid-<type>` circle. A `ASTEROID_TEXTURE_SIZE/max(w,h)` art
-    factor folded into `baseScale` keeps the prior on-screen size, so depletion
-    scaling and the fixed-radius company ring are unchanged.
+    (WI 585); falls back to the procedural `asteroid-<type>` circle. A
+    `ASTEROID_TEXTURE_SIZE/max(w,h)` art factor folded into `baseScale` keeps the
+    prior on-screen size, so depletion scaling and the fixed-radius company ring are
+    unchanged.
+  - **Scan-gating (WI 586):** a *large* (high-yield) asteroid is **unknown** until
+    scanned — `isUnknown()` = `sizeCategory === 'large' && !scanned`. While unknown
+    it renders the `unknown` atlas frame and the EntityPanel hides type/quantity/
+    composition ("scan to assess"); `reveal()` (called from `completeScan`) sets
+    `scanned` and flips to the resource frame. Small/medium asteroids are always
+    known (their composition stays scan-gated as before). No save-schema change —
+    `scanned` already persists. Manual mining of an unknown is allowed; auto-designate
+    (company arrivals only) is unaffected.
   - Inputs: `AsteroidData` (from worldGenerator), per-frame orbital angle update from SpaceScene
   - Outputs: `selectedAsteroid` store (when selected); emits `'asteroid-selected'` event; `currentQuantity` consumed by AutoMiner
   - Maintains Keplerian orbit: `angle += ORBITAL_K / radius^1.5 * dt`

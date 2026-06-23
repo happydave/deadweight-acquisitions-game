@@ -199,18 +199,24 @@
   {@const mineDesig = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id && d.kind === 'mine') ?? null}
   {@const scanDesig = $designationQueue.find(d => d.asteroidId === $selectedAsteroid!.id && d.kind === 'scan') ?? null}
   {@const compOrder = ['iron', 'ice', 'silicates', 'rare-metals'] as const}
+  {@const unknown = $selectedAsteroid.sizeCategory === 'large' && !$selectedAsteroid.scanned}
   <div class="panel">
-    <div class="name asteroid-name">{$selectedAsteroid.resourceType}</div>
+    <div class="name asteroid-name">{unknown ? 'Unknown' : $selectedAsteroid.resourceType}</div>
     <div class="row">
       <span class="label">Size</span>
       <span class="value">{$selectedAsteroid.sizeCategory}</span>
     </div>
     <div class="row">
       <span class="label">Quantity</span>
-      <span class="value">{Math.floor($selectedAsteroid.currentQuantity)} / {$selectedAsteroid.maxQuantity}</span>
+      <span class="value">{#if unknown}—{:else}{Math.floor($selectedAsteroid.currentQuantity)} / {$selectedAsteroid.maxQuantity}{/if}</span>
     </div>
 
-    {#if $selectedAsteroid.scanned}
+    {#if unknown}
+      <div class="row">
+        <span class="label">Contents</span>
+        <span class="value">unknown — scan to assess</span>
+      </div>
+    {:else if $selectedAsteroid.scanned}
       {#each compOrder as r}
         {#if $selectedAsteroid.composition[r] > 0}
           <div class="row">

@@ -2528,8 +2528,7 @@ export class SpaceScene extends Phaser.Scene {
   private completeScan(ship: Ship): void {
     const asteroid = ship.asteroidTarget
     if (asteroid) {
-      asteroid.scanned = true
-      asteroid.pushToStore()
+      asteroid.reveal() // mark scanned + flip the unknown sprite to the resource frame
       this.removeDesignation(asteroid.id, 'scan') // job done; the scanned flag is the persistent record
     }
     ship.isScanJob = false

@@ -6,8 +6,17 @@ import { selectedAsteroid } from '../state/shipStore'
 import { get } from 'svelte/store'
 
 // Generated per-resource asteroid atlas (asset-harness). Frames are named by resource type
-// ('iron'|'ice'|'silicates'|'rare-metals', plus 'unknown' reserved for scan-gating, WI 586).
+// ('iron'|'ice'|'silicates'|'rare-metals', plus 'unknown' for scan-gated large asteroids).
 export const ASTEROID_ATLAS_KEY = 'dwa_asteroids'
+
+// Large (high-yield) asteroids start unknown until scanned — they reveal the generic 'unknown'
+// frame (and hide type/quantity/composition in the panel) until a scan completes (WI 586).
+function isUnknownData(data: AsteroidData): boolean {
+  return data.sizeCategory === 'large' && !data.scanned
+}
+function asteroidFrame(data: AsteroidData): string {
+  return isUnknownData(data) ? 'unknown' : data.resourceType
+}
 
 const COMPANY_RING_RADIUS = ASTEROID_TEXTURE_SIZE * 1.2  // slightly larger than the largest visual
 const COMPANY_RING_COLOR = 0x44ffdd
@@ -33,7 +42,7 @@ export class Asteroid extends Phaser.GameObjects.Image {
     super(
       scene, 0, 0,
       scene.textures.exists(ASTEROID_ATLAS_KEY) ? ASTEROID_ATLAS_KEY : `asteroid-${data.resourceType}`,
-      scene.textures.exists(ASTEROID_ATLAS_KEY) ? data.resourceType : undefined,
+      scene.textures.exists(ASTEROID_ATLAS_KEY) ? asteroidFrame(data) : undefined,
     )
     this.id = data.id
     this.resourceType = data.resourceType
@@ -70,6 +79,18 @@ export class Asteroid extends Phaser.GameObjects.Image {
         ease: 'Sine.easeInOut',
       })
     }
+  }
+
+  /** A large (high-yield) asteroid whose contents are hidden until scanned. */
+  isUnknown(): boolean {
+    return this.sizeCategory === 'large' && !this.scanned
+  }
+
+  /** Scan complete: mark known and reveal the resource sprite (no-op art in fallback mode). */
+  reveal(): void {
+    this.scanned = true
+    if (this.scene.textures.exists(ASTEROID_ATLAS_KEY)) this.setFrame(this.resourceType)
+    this.pushToStore()
   }
 
   updateOrbit(dt: number): void {
